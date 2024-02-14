@@ -1,12 +1,11 @@
 #!/usr/bin/env python
+from __future__ import annotations
 
 import argparse
-import sys
+
 import rich_argparse as rap
-import utils.cli_logging as log
+import utils.cli as cli
 
-
-logger = log.setup_logger()
 
 class OnelineArgumentFormatter(rap.ArgumentDefaultsRichHelpFormatter, rap.RichHelpFormatter):
     def __init__(self, prog, max_help_position=30, **kwargs):
@@ -32,80 +31,142 @@ class AkamaiParser(argparse.ArgumentParser):
         self.usage = 'akamai cps [options] [command] [subcommand] [arguments] -h'
 
     @classmethod
-    def get_args(self, args):
-        parser = argparse.ArgumentParser(prog='cps', formatter_class=CustomHelpFormatter)
-        parser.add_argument('-a', '--account-key',
-                                metavar='', type=str, dest='account_switch_key',
-                                help='account switch key (Akamai Internal Only)')
+    def all_command(cls, subparsers):
+        actions = {}
+        for main_cmd_info in cli.main_commands:
+            command, main_cmd_help = next(iter(main_cmd_info.items()))
+            try:
+                sc = cli.sub_commands[command]
+            except Exception:
+                sc = None
+            actions[command] = cls.create_main_command(subparsers,
+                                                       name=command,
+                                                       help=main_cmd_help,
+                                                       required_arguments=main_cmd_info.get('required_arguments', []),
+                                                       optional_arguments=main_cmd_info.get('optional_arguments', []),
+                                                       subcommands=sc,
+                                                       options=None)
+
+    @classmethod
+    def get_args(cls, args):
+        parser = argparse.ArgumentParser(prog='akamai cps',
+                                         formatter_class=CustomHelpFormatter,
+                                         conflict_handler='resolve', add_help=False,
+                                         description='Akamai CLI for CPS',
+                                         epilog='Use %(prog)s {command} [-h]/[--help] to get help on individual command')
+
+        parser._optionals.title = 'Global options'
+
+        parser.add_argument('-a', '--accountkey',
+                            metavar='', type=str, dest='account_switch_key',
+                            help='account switch key (Akamai Internal Only)')
         parser.add_argument('-e', '--edgerc',
                             metavar='', type=str, dest='edgerc',
                             help='location of the credentials file [$AKAMAI_EDGERC]')
         parser.add_argument('-s', '--section',
                             metavar='', type=str, dest='section', default='default',
                             help='section of the credentials file [$AKAMAI_EDGERC_SECTION]')
+        parser.add_argument('-v', '--version', action='version', version='%(prog)s v1.0.0',
+                             help='show akamai cli utility version')
+        parser.add_argument('-h', '--help', action='help', help='show this help message and exit')
+        parser.add_argument('-l', '--log-level',
+                            choices=['debug', 'info', 'warning', 'error', 'critical'],
+                            default='info',
+                            help='Set the log level. Too noisy, increase to warning')
 
-        sub_parsers = parser.add_subparsers(help='sub-command help', dest='command')
+        subparsers = parser.add_subparsers(title='commands', metavar='', dest='command')
 
-        # create the parser for the "prerequisites" sub-command
-        _list = sub_parsers.add_parser('list', help='list all enrollments',formatter_class=CustomHelpFormatter)
-        _list.add_argument('--show-expiration', 
-                                    metavar='', action='store_true', default = False, help='shows expiration date of the enrollment')
-       
-        
-         # create the parser for the "prerequisites" sub-command
-        _retrieve_enrollment = sub_parsers.add_parser('retrieve-enrollment', help='Output enrollment data to json or yaml format',formatter_class=CustomHelpFormatter)
-        _retrieve_enrollment.add_argument('-id','--enrollment-id', 
-                                    metavar='',type=str, help='enrollment-id of the enrollment', required=False)
-        _retrieve_enrollment.add_argument('-cn','--common-name', 
-                                    metavar='',type=str, help='Common name of the certificate', required=False)
-        _retrieve_enrollment.add_argument('--json', 
-                                    metavar='',action='store_true', default=False,
-                                    help='Output format is json', required=False)
-        _retrieve_enrollment.add_argument('--yaml', 
-                                    metavar='',action='store_true', default=False,
-                                    help='Output format is yaml', required=False)
-        _retrieve_enrollment.add_argument('--network', 
-                                    metavar='',type=str, help='Deployment detail of certificate in staging or production', required=False)
+        optional = parser.add_argument_group('Optional Arguments')
+        optional.add_argument('-v', '--verbose', action='store_true', help=argparse.SUPPRESS)
 
-
-        # create the parser for the "prerequisites" sub-command
-        _retrieve_deployed = sub_parsers.add_parser('retrieve-deployed', help='Output information about certifcate deployed on network',formatter_class=CustomHelpFormatter)
-        _retrieve_deployed.add_argument('-id','--enrollment-id', 
-                                    metavar='',type=str, help='enrollment-id of the enrollment', required=False)
-        _retrieve_deployed.add_argument('-cn','--common-name', 
-                                    metavar='',type=str, help='Common name of the certificate', required=False)
-        _retrieve_deployed.add_argument('--json', 
-                                    metavar='',action='store_true', default=False,
-                                    help='Output format is json', required=False)
-        _retrieve_deployed.add_argument('--network', 
-                                    metavar='',type=str, help='Deployment detail of certificate in staging or production', required=False)
-        _retrieve_deployed.add_argument('--leaf', 
-                                    metavar='',action='store_true', default=False,
-                                    help='Get leaf certificate in PEM format', required=False)
-        _retrieve_deployed.add_argument('--chain', 
-                                    metavar='',action='store_true', default=False,
-                                    help='Get complete certificate in PEM format', required=False)
-        _retrieve_deployed.add_argument('--info', 
-                                    metavar='',action='store_true', default=False,
-                                    help='Get details of certificate in human readable format', required=False)
-    
-
-        _retrieve_deployed.add_argument('-cn','--common-name', 
-                                    metavar='',type=str, help='Common name of the certificate', required=False)
-        #_prework.add_argument('--group-id', type=str, help='group id of hostname bucket')
-        
-        # create the parser for the "onboard-host" sub-command
-        _status = sub_parsers.add_parser('status', help='Get any current change status for an enrollment',formatter_class=CustomHelpFormatter)
-        _status.add_argument('-id','--enrollment-id', 
-                                    metavar='',type=str, help='enrollment-id of the enrollment', required=False)
-        _status.add_argument('-cn','--common-name', 
-                                    metavar='',type=str, help='Common name of the certificate', required=False)
-        _status.add_argument('--validation-type', 
-                                    metavar='',type=str, help='Use http or dns', required=False)
-        
-       
-
+        cls.all_command(subparsers)
         return parser.parse_args(args)
 
-    
+    @classmethod
+    def create_main_command(cls, subparsers, name, help,
+                            required_arguments=None,
+                            optional_arguments=None,
+                            subcommands=None,
+                            options=None):
 
+        action = subparsers.add_parser(name=name,
+                                       description=help,
+                                       help=help,
+                                       add_help=True,
+                                       usage=None,
+                                       formatter_class=CustomHelpFormatter)
+
+        if subcommands:
+            subparsers = action.add_subparsers(title=name, metavar='', dest='subcommand')
+            for subcommand in subcommands:
+                subcommand_name = subcommand['name']
+                subcommand_help = subcommand['help']
+                subcommand_required = subcommand.get('required_arguments', None)
+                subcommand_optional = subcommand.get('optional_arguments', None)
+                cls.create_main_command(subparsers, subcommand_name, subcommand_help,
+                                        subcommand_required,
+                                        subcommand_optional,
+                                        subcommands=subcommand.get('subcommands', None),
+                                        options=None)
+
+        cls.add_arguments(action, required_arguments, optional_arguments)
+
+        if options:
+            options_group = action.add_argument_group('Options')
+            for option in options:
+                option_name = option['name']
+                del option['name']
+                try:
+                    action_value = option['action']
+                    del option['action']
+                    options_group.add_argument(f'--{option_name}', action=action_value, **option)
+                except KeyError:
+                    options_group.add_argument(f'--{option_name}', metavar='', **option)
+        return action
+
+    @classmethod
+    def add_mutually_exclusive_group(cls, action, argument, conflicting_argument):
+
+        group = action.add_mutually_exclusive_group()
+        group.add_argument(argument['name'], help=argument['help'], nargs='+')
+
+        # Add the conflicting argument to the group as a mutually exclusive argument
+        conflicting_argument_help = [arg['help'] for arg in argument if arg['name'] == conflicting_argument]
+        group.add_argument(conflicting_argument, help=conflicting_argument_help, nargs='+')
+
+    @classmethod
+    def add_arguments(cls, action, required_arguments=None, optional_arguments=None):
+
+        if required_arguments:
+            required = action.add_argument_group('Required Arguments')
+            for arg in required_arguments:
+                name = arg['name']
+                del arg['name']
+                try:
+                    action_value = arg['action']
+                    del arg['action']
+                    required.add_argument(f'--{name}', action=action_value, **arg)
+                except KeyError:
+                    required.add_argument(f'--{name}', metavar='', **arg)
+
+        if optional_arguments:
+            optional = action.add_argument_group('Optional Arguments')
+            for arg in optional_arguments:
+                if arg['name'] == '--group-id':
+                    cls.add_mutually_exclusive_group(action, arg, '--property-id')
+                elif arg['name'] == '--property-id':
+                    cls.add_mutually_exclusive_group(action, arg, '--group-id')
+                else:
+                    name = arg['name']
+                    del arg['name']
+                    try:
+                        action_value = arg['action']
+                        del arg['action']
+                        optional.add_argument(f'--{name}', required=False, action=action_value, **arg)
+                    except KeyError:
+                        optional.add_argument(f'--{name}', metavar='', required=False, **arg)
+
+            optional.add_argument('--log-level',
+                                  choices=['debug', 'info', 'warning', 'error', 'critical'],
+                                  default='info',
+                                  help='Set the log level. Too noisy, increase to warning')
