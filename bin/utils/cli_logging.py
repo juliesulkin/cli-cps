@@ -1,17 +1,8 @@
 from __future__ import annotations
 
-import json
 import logging
-import os
-import shutil
 import time
 from pathlib import Path
-from time import gmtime
-from time import perf_counter
-from time import strftime
-
-import coloredlogs
-
 
 
 custom_level_styles = {
@@ -30,9 +21,6 @@ def setup_logger():
     logging.Formatter.converter = time.gmtime
 
     logger = logging.getLogger()
-    logging.basicConfig(filename='logs/logger.log', encoding='utf-8', level=logging.INFO)
+    logging.basicConfig(filename='logs/cps.log', encoding='utf-8', level=logging.INFO)
 
-    
-
-  
     return logger

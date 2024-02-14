@@ -108,3 +108,6 @@ enrollments.json
 
 #OS artifacts
 .DS_Store
+
+.pytest_cache
+test
