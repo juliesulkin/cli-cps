@@ -47,6 +47,7 @@ import utils.cli_logging as log
 from akamai_apis.auth import AkamaiSession
 from akamai_apis.idm import IdentityAccessManagement
 
+
 logger = log.setup_logger()
 
 
@@ -1077,6 +1078,12 @@ def list(args):
     -------
     None
     """
+
+    _utils = utils.utility()
+    _auth = AkamaiSession(args=args)
+    _idm = IdentityAccessManagement(_auth)
+
+
     base_url, session = init_config(args.edgerc, args.section)
     cps_object = cps(base_url,args.account_key)
     contract_id_set = set()
