@@ -36,27 +36,24 @@ from cpsApiWrapper import certificate
 from cpsApiWrapper import cps
 from headers import headers
 
+import sys
+from urllib.parse import urlparse
+
+import utils.emojis as emoji
+import utils.utility as utils
+from utils.parser import AkamaiParser as parser
+import utils.cli_logging as log
+
+from akamai_apis.auth import AkamaiSession
+from akamai_apis.idm import IdentityAccessManagement
+
+logger = log.setup_logger()
+
+
+
 PACKAGE_VERSION = "2.0.0"
 
-# Setup logging
-if not os.path.exists('logs'):
-    os.makedirs('logs')
-log_file = os.path.join('logs', 'cps.log')
 
-# Set the format of logging in console and file separately
-log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-console_formatter = logging.Formatter("%(message)s")
-root_logger = logging.getLogger()
-
-logfile_handler = logging.FileHandler(log_file, mode='a')
-logfile_handler.setFormatter(log_formatter)
-root_logger.addHandler(logfile_handler)
-
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(console_formatter)
-root_logger.addHandler(console_handler)
-# Set Log Level to DEBUG, INFO, WARNING, ERROR, CRITICAL
-root_logger.setLevel(logging.INFO)
 
 
 def init_config(edgerc_file, section):
@@ -2207,3 +2204,10 @@ def get_cache_dir():
         return os.getenv("AKAMAI_CLI_CACHE_DIR")
 
     return os.curdir
+
+if __name__ == '__main__':
+    args = parser.get_args(args=None if sys.argv[1:] else ['--help'])
+    
+    
+    if args.command == 'list':
+        list(args)
