@@ -24,3 +24,15 @@ def setup_logger():
     logging.basicConfig(filename='logs/cps.log', encoding='utf-8', level=logging.INFO)
 
     return logger
+
+
+def countdown(time_sec: int, msg: str, logger=None):
+    time_min = int(time_sec / 60)
+    msg = f'{msg} {time_min} minutes count down'
+    logger.critical(msg)
+    while time_sec:
+        mins, secs = divmod(time_sec, 60)
+        timeformat = f'{mins:02d}:{secs:02d}'
+        print(f'\t\t\t\t{timeformat}', end='\r')
+        time.sleep(1)
+        time_sec -= 1
