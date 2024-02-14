@@ -77,15 +77,15 @@ class AkamaiParser(argparse.ArgumentParser):
         _retrieve_deployed.add_argument('--json', 
                                     metavar='',action='store_true', default=False,
                                     help='Output format is json', required=False)
-        _retrieve_enrollment.add_argument('--network', 
+        _retrieve_deployed.add_argument('--network', 
                                     metavar='',type=str, help='Deployment detail of certificate in staging or production', required=False)
-        _retrieve_enrollment.add_argument('--leaf', 
+        _retrieve_deployed.add_argument('--leaf', 
                                     metavar='',action='store_true', default=False,
                                     help='Get leaf certificate in PEM format', required=False)
-        _retrieve_enrollment.add_argument('--chain', 
+        _retrieve_deployed.add_argument('--chain', 
                                     metavar='',action='store_true', default=False,
                                     help='Get complete certificate in PEM format', required=False)
-        _retrieve_enrollment.add_argument('--info', 
+        _retrieve_deployed.add_argument('--info', 
                                     metavar='',action='store_true', default=False,
                                     help='Get details of certificate in human readable format', required=False)
     
