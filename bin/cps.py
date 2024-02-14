@@ -213,6 +213,14 @@ def cli():
          {"name": "cn", "help": "Common Name of certificate"}],
         None)
 
+    actions["sbd-audit"] = create_sub_command(
+        subparsers, "sbd-audit", "list all sbd enabled certificates for an account",
+       [{"name": "output-file", "help": "Name of the outputfile to be saved to"},
+         {"name": "json", "help": "Output format is json"},
+         {"name": "xlsx", "help": "Output format is xlsx"},
+         {"name": "csv", "help": "Output format is csv"},
+         {"name": "include-change-details", "help": "Add additional details of pending certificates"}])
+    
     args = parser.parse_args()
 
     if len(sys.argv) <= 1:
@@ -228,7 +236,7 @@ def cli():
             parser.print_help()
         return 0
 
-    if args.command != "setup":
+    if args.command not in ["setup", "sbd-audit"]:
         confirm_setup(args)
 
     # Override log level if user wants to run in debug mode
@@ -1975,6 +1983,217 @@ def confirm_setup(args):
 
     return
 
+def sbd_audit(args):
+    """
+    Method for handling sbd-audit action. This method generates an audit report of the account or
+    all sbd enabled certificates. The default output format is csv, and it is configurable to xlsx or json
+
+    Parameters
+    -----------
+    args : <string>
+        Default args parameter (usually no argument specified)
+    Returns
+    -------
+    None
+    """
+    if args.output_file:
+        output_file = args.output_file
+    else:
+        #Default it to audit directory
+        if not os.path.exists('audit'):
+            os.makedirs('audit')
+        timestamp = '{:%Y%m%d_%H%M%S}'.format(datetime.datetime.now())
+        output_file_name = f'SBDAudit_{str(timestamp)}.csv'
+        output_file = os.path.join('audit', output_file_name)
+
+    
+
+    xlsxFile = f"{output_file.replace('.csv', '').replace('.xlsx', '').replace('.xls', '')}.xlsx"
+    json_file = f"{output_file.replace('.csv', '').replace('.json', '')}.json"
+    final_json_array = []
+
+    with open(output_file, 'w') as fileHandler:
+        title_line = 'hostname,commonName,issuer,issued_date,expiry_date,san_list,serial_number,days_until_expiration,\
+        papi_staging,papi_production'
+
+        #Add a newline character
+        title_line = title_line + '\n'
+        fileHandler.write(title_line)
+
+    base_url, session = init_config(args.edgerc, args.section)
+    cps_object = cps(base_url,args.account_key)
+    for root, dirs, files in os.walk(enrollmentsPath):
+        local_enrollments_file = 'enrollments.json'
+        if local_enrollments_file in files:
+            with open(os.path.join(enrollmentsPath, local_enrollments_file), mode='r') as enrollmentsFileHandler:
+                enrollments_string_content = enrollmentsFileHandler.read()
+            print('')
+            root_logger.info('Generating SBD audit file...')
+            enrollments_json_content = json.loads(enrollments_string_content)
+            enrollmentTotal = len(enrollments_json_content)
+            count = 0
+            for every_enrollment_info in enrollments_json_content:
+                #Set a default value for pending_detail
+                pending_detail = 'Not Applicable'
+                geotrustOrderId = 'Not Applicable'
+                count = count + 1
+                contract_id = every_enrollment_info['contractId']
+                enrollmentId = every_enrollment_info['enrollmentId']
+                commonName = every_enrollment_info['cn']
+                root_logger.info('Processing ' + str(count) + ' of ' +
+                                 str(enrollmentTotal) + ': Common Name (CN): ' + commonName)
+                enrollment_details = cps_object.get_enrollment(
+                    session, enrollmentId)
+
+                if enrollment_details.status_code == 200:
+                    enrollment_details_json = enrollment_details.json()
+
+                    #Update the final json array if the output format is json. used at the end
+                    enrollment_json_info = enrollment_details_json
+                    enrollment_json_info['contractId'] = contract_id
+
+                    certResponse = cps_object.get_certificate(
+                        session, enrollmentId)
+                    expiration = ''
+                    if certResponse.status_code == 200:
+                        certificate_details = certificate(certResponse.json()['certificate'])
+                        expiration = certificate_details.expiration
+                    else:
+                        root_logger.debug(
+                            'Reason: ' + json.dumps(certResponse.json(), indent=4))
+                    sanCount = len(enrollment_details_json['csr']['sans'])
+                    sanList = str(enrollment_details_json['csr']['sans']).replace(
+                        ',', '').replace('[', '').replace(']', '')
+                    if sanCount <= 1:
+                        sanList = ''
+                    changeManagement = str(
+                        enrollment_details_json['changeManagement'])
+                    if changeManagement.lower() == 'true':
+                        changeManagement = 'yes'
+                    else:
+                        changeManagement = 'no'
+                    disallowedTlsVersions = str(enrollment_details_json['networkConfiguration']['disallowedTlsVersions']).replace(
+                        ',', '').replace('[', '').replace(']', '')
+                    Status = 'UNKNOWN'
+                    adminName = str(enrollment_details_json['adminContact']['firstName']) + \
+                        ' ' + str(enrollment_details_json['adminContact']['lastName'])
+                    techName = str(enrollment_details_json['techContact']['firstName']) + \
+                        ' ' + str(enrollment_details_json['techContact']['lastName'])
+                    if 'pendingChanges' in enrollment_details_json and len(enrollment_details_json['pendingChanges']) == 0:
+                        Status = 'ACTIVE'
+                    elif 'pendingChanges' in enrollment_details_json and len(enrollment_details_json['pendingChanges']) > 0:
+                        Status = 'IN-PROGRESS'
+                        if args.include_change_details:
+                            #Fetch additional details and populate the details column
+                            change_id = int(enrollment_details_json['pendingChanges'][0]['location'].split('/')[-1])
+                            change_status_response = cps_object.get_change_status(session, enrollmentId, change_id)
+                            if change_status_response.status_code == 200:
+                                pending_detail = change_status_response.json()['statusInfo']['description']
+                                if enrollment_details_json['validationType'] == 'ov' or enrollment_details_json['validationType'] == 'ev':
+                                    #Fetch the OrderId and populate it
+                                    change_history_response = cps_object.get_change_history(session, enrollmentId)
+                                    for each_change in change_history_response.json()['changes']:
+                                        if 'status' in each_change:
+                                            if each_change['status'] == 'incomplete':
+                                                print(json.dumps(each_change, indent=4))
+                                                try:
+                                                    if 'primaryCertificateOrderDetails' in each_change:
+                                                        if 'geotrustOrderId' in each_change['primaryCertificateOrderDetails']:
+                                                            geotrustOrderId = str(each_change['primaryCertificateOrderDetails']['geotrustOrderId'])
+                                                        else:
+                                                            pass
+                                                    else:
+                                                        pass
+                                                except:
+                                                    root_logger.info('Unable to fetch details of Pending Change.')
+                                                    pass
+                                            else:
+                                                pass
+                                        else:
+                                            pass
+
+                            else:
+                                print('')
+                                root_logger.info('Unable to determine change status for enrollment ' + str(enrollmentId) + ' with change Id ' + str(change_id))
+
+
+                    #root_logger.info(json.dumps(enrollment_details_json, indent=4))
+                    if enrollment_details_json['networkConfiguration']['sniOnly'] is not None:
+                        sniInfo = enrollment_details_json['networkConfiguration']['sniOnly']
+                    else:
+                        sniInfo = ''
+
+                    output_content = contract_id + ',' + str(enrollmentId) + ', ' + enrollment_details_json['csr']['cn'] + ', ' + sanList + ', ' + Status + ', ' \
+                      + expiration + ', ' + enrollment_details_json['validationType'] + ', ' \
+                      + enrollment_details_json['certificateType'] + ', ' \
+                      + changeManagement + ',' + adminName + ',' + \
+                      str(enrollment_details_json['adminContact']['email']) + ', ' \
+                      + str(enrollment_details_json['adminContact']['phone']) + ', ' + techName + ',' \
+                      + str(enrollment_details_json['techContact']['email']) + ', ' + \
+                      str(enrollment_details_json['techContact']['phone']) + ',' \
+                      + str(enrollment_details_json['networkConfiguration']['geography']) + ',' + \
+                      str(enrollment_details_json['networkConfiguration']['secureNetwork']) + ',' \
+                      + str(enrollment_details_json['networkConfiguration']['mustHaveCiphers']) + ',' + \
+                      str(enrollment_details_json['networkConfiguration']['preferredCiphers']) + ',' \
+                      + disallowedTlsVersions + \
+                      ',' + str(sniInfo) + ',' \
+                      + str(enrollment_details_json['csr']['c']) + ',' + str(enrollment_details_json['csr']['st']) + ',' \
+                      + str(enrollment_details_json['csr']['o']) + ',' + str(enrollment_details_json['csr']['ou'])
+
+                    if args.include_change_details:
+                        #Adding geotrustOrderId to all, as we have initialized to Not Applicable in general
+                        output_content = output_content + ',' + pending_detail + ',' + geotrustOrderId
+
+                    #Add a newline character
+                    output_content = output_content + '\n'
+
+                    with open(output_file, 'a') as fileHandler:
+                        fileHandler.write(output_content)
+                    #if json format is of interest
+                    if args.json:
+                        deployment_details = cps_object.get_certificate(session, enrollmentId)
+                        if deployment_details.status_code == 200:
+                            enrollment_json_info['productionDeployment'] = deployment_details.json()
+                        else:
+                            root_logger.debug(
+                                'Invalid API Response (' + str(deployment_details.status_code) + '): Unable to fetch deployment/Certificate details in production for enrollment-id: ' + str(enrollmentId))
+                        #Populate the final list
+                        final_json_array.append(enrollment_json_info)
+
+                else:
+                    root_logger.info(
+                        'Invalid API Response (' + str(enrollment_details.status_code) + '): Unable to fetch Enrollment/Certificate details in production for enrollment-id: ' + str(enrollmentId))
+                    root_logger.info(
+                        'Reason: ' + json.dumps(enrollment_details.json(), indent=4))
+                    print('\n')
+
+            if args.xlsx:
+                root_logger.info('\nDone! Output file written here: ' + xlsxFile)
+                # Merge CSV files into XLSX
+                workbook = Workbook(os.path.join(xlsxFile))
+                worksheet = workbook.add_worksheet('Certificate')
+                with open(os.path.join(output_file), 'rt', encoding='utf8') as f:
+                    reader = csv.reader(f)
+                    for r, row in enumerate(reader):
+                        for c, col in enumerate(row):
+                            worksheet.write(r, c, col)
+                workbook.close()
+                # Delete the csv file at the end
+                if output_file.endswith('csv'):
+                    os.remove(output_file)
+            elif args.json:
+                root_logger.info('\nDone! Output file written here: ' + json_file)
+                with open(os.path.join(json_file), 'w') as f:
+                    f.write(json.dumps(final_json_array, indent=4))
+                    #os.remove(output_file)
+            else:
+                #Default is csv format
+                print('')
+                root_logger.info('Done! Output file written here: ' + output_file)
+
+        else:
+            root_logger.info("Unable to find local cache. Please run 'setup' again")
+            exit(0)
 
 def get_prog_name():
     prog = os.path.basename(sys.argv[0])
