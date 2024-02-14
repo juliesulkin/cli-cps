@@ -1,0 +1,16 @@
+
+akamai cps
+python bin/akamai-cps.py -a XXXXX
+
+-h
+list
+retrieve-enrollment
+retrieve-deployed
+status
+create
+update
+cancel
+delete
+audit
+proceed
+sbd-audit
