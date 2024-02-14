@@ -11,17 +11,20 @@ repos:
       - id: check-json
       - id: mixed-line-ending
       # - id: pretty-format-json
+    exclude: ^bin/_delete
   - repo: https://github.com/asottile/reorder_python_imports
     rev: v3.9.0
     hooks:
       - id: reorder-python-imports
         exclude: ^(pre_commit/resources/|testing/resources/python3_hooks_repo/)
         args: [--py37-plus, --add-import, "from __future__ import annotations"]
+        exclude: ^bin/_delete
   - repo: https://github.com/asottile/pyupgrade
     rev: v3.2.0
     hooks:
       - id: pyupgrade
         args: [--py37-plus]
+        exclude: ^bin/_delete
   - repo: https://github.com/PyCQA/flake8
     rev: 5.0.4
     hooks:
@@ -29,3 +32,4 @@ repos:
         args:
           - "--max-line-length=140"
           - "--max-complexity=18"
+        exclude: ^bin/_delete

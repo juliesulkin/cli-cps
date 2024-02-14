@@ -11,12 +11,12 @@ Copyright 2017 Akamai Technologies, Inc. All Rights Reserved.
  See the License for the specific language governing permissions and
  limitations under the License.
 """
-
 """
 This code leverages akamai OPEN API. to control Certificates deployed in Akamai Network.
 In case you need quick explanation contact the initiators.
 Initiators: vbhat@akamai.com, aetsai@akamai.com, mkilmer@akamai.com
 """
+from __future__ import annotations
 
 import argparse
 import configparser
@@ -25,54 +25,51 @@ import datetime
 import json
 import logging
 import os
-import requests
-import sys
-import yaml
-from akamai.edgegrid import EdgeGridAuth, EdgeRc
-from prettytable import PrettyTable
-from xlsxwriter.workbook import Workbook
-
-from cpsApiWrapper import certificate
-from cpsApiWrapper import cps
-from headers import headers
-
 import sys
 from urllib.parse import urlparse
 
+import requests
+import utils.cli_logging as log
 import utils.emojis as emoji
 import utils.utility as utils
-from utils.parser import AkamaiParser as parser
-import utils.cli_logging as log
-
+import yaml
+from akamai.edgegrid import EdgeGridAuth
+from akamai.edgegrid import EdgeRc
 from akamai_apis.auth import AkamaiSession
 from akamai_apis.idm import IdentityAccessManagement
+from cpsApiWrapper import certificate
+from cpsApiWrapper import cps
+from headers import headers
+from prettytable import PrettyTable
+from utils.parser import AkamaiParser as parser
+from xlsxwriter.workbook import Workbook
 
 
 logger = log.setup_logger()
 
 
 
-PACKAGE_VERSION = "2.0.0"
+PACKAGE_VERSION = '2.0.0'
 
 
 
 
 def init_config(edgerc_file, section):
     if not edgerc_file:
-        if not os.getenv("AKAMAI_EDGERC"):
-            edgerc_file = os.path.join(os.path.expanduser("~"), '.edgerc')
+        if not os.getenv('AKAMAI_EDGERC'):
+            edgerc_file = os.path.join(os.path.expanduser('~'), '.edgerc')
         else:
-            edgerc_file = os.getenv("AKAMAI_EDGERC")
+            edgerc_file = os.getenv('AKAMAI_EDGERC')
 
     if not os.access(edgerc_file, os.R_OK):
         root_logger.error("Unable to read edgerc file \"%s\"" % edgerc_file)
         exit(1)
 
     if not section:
-        if not os.getenv("AKAMAI_EDGERC_SECTION"):
-            section = "default"
+        if not os.getenv('AKAMAI_EDGERC_SECTION'):
+            section = 'default'
         else:
-            section = os.getenv("AKAMAI_EDGERC_SECTION")
+            section = os.getenv('AKAMAI_EDGERC_SECTION')
 
     try:
         edgerc = EdgeRc(edgerc_file)
@@ -87,7 +84,7 @@ def init_config(edgerc_file, section):
         exit(1)
     except Exception:
         root_logger.info(
-            "Unknown error occurred trying to read edgerc file (%s)" %
+            'Unknown error occurred trying to read edgerc file (%s)' %
             edgerc_file)
         exit(1)
 
@@ -95,7 +92,7 @@ def init_config(edgerc_file, section):
 def cli():
     prog = get_prog_name()
     if len(sys.argv) == 1:
-        prog += " [command]"
+        prog += ' [command]'
 
     parser = argparse.ArgumentParser(
         description='Akamai CLI for CPS',
@@ -108,133 +105,133 @@ def cli():
                 PACKAGE_VERSION)
 
     subparsers = parser.add_subparsers(
-        title='Commands', dest="command", metavar="")
+        title='Commands', dest='command', metavar='')
 
     actions = {}
 
     subparsers.add_parser(
-        name="help",
-        help="Show available help",
+        name='help',
+        help='Show available help',
         add_help=False).add_argument(
         'args',
-        metavar="",
+        metavar='',
         nargs=argparse.REMAINDER)
 
-    actions["setup"] = create_sub_command(
+    actions['setup'] = create_sub_command(
         subparsers,
-        "setup",
-        "Initial setup to download all necessary enrollment info ")
+        'setup',
+        'Initial setup to download all necessary enrollment info ')
 
-    actions["list"] = create_sub_command(
-        subparsers, "list", "List all enrollments",
-        [{"name": "show-expiration", "help": "shows expiration date of the enrollment"}],
+    actions['list'] = create_sub_command(
+        subparsers, 'list', 'List all enrollments',
+        [{'name': 'show-expiration', 'help': 'shows expiration date of the enrollment'}],
         None)
 
-    actions["retrieve-enrollment"] = create_sub_command(
-        subparsers, "retrieve-enrollment",
-        "Output enrollment data to json or yaml format",
-        [{"name": "enrollment-id", "help": "enrollment-id of the enrollment"},
-         {"name": "cn", "help": "Common Name of certificate"},
-         {"name": "json", "help": "Output format is json"},
-         {"name": "yaml", "help": "Output format is yaml"},
-         {"name": "yml", "help": "Output format is yaml"},
-         {"name": "network", "help": "Deployment detail of certificate in staging or production"}],
+    actions['retrieve-enrollment'] = create_sub_command(
+        subparsers, 'retrieve-enrollment',
+        'Output enrollment data to json or yaml format',
+        [{'name': 'enrollment-id', 'help': 'enrollment-id of the enrollment'},
+         {'name': 'cn', 'help': 'Common Name of certificate'},
+         {'name': 'json', 'help': 'Output format is json'},
+         {'name': 'yaml', 'help': 'Output format is yaml'},
+         {'name': 'yml', 'help': 'Output format is yaml'},
+         {'name': 'network', 'help': 'Deployment detail of certificate in staging or production'}],
          None)
 
-    actions["retrieve-deployed"] = create_sub_command(
-        subparsers, "retrieve-deployed",
-        "Output information about certifcate deployed on network",
-        [{"name": "enrollment-id", "help": "enrollment-id of the enrollment"},
-         {"name": "cn", "help": "Common Name of certificate"},
-         {"name": "network", "help": "Deployment detail of certificate in staging or production"},
-         {"name": "leaf", "help": "Get leaf certificate in PEM format"},
-         {"name": "chain", "help": "Get complete certificate in PEM format"},
-         {"name": "info", "help": "Get details of certificate in human readable format"},
-         {"name": "json", "help": "Output format is json"}],
+    actions['retrieve-deployed'] = create_sub_command(
+        subparsers, 'retrieve-deployed',
+        'Output information about certifcate deployed on network',
+        [{'name': 'enrollment-id', 'help': 'enrollment-id of the enrollment'},
+         {'name': 'cn', 'help': 'Common Name of certificate'},
+         {'name': 'network', 'help': 'Deployment detail of certificate in staging or production'},
+         {'name': 'leaf', 'help': 'Get leaf certificate in PEM format'},
+         {'name': 'chain', 'help': 'Get complete certificate in PEM format'},
+         {'name': 'info', 'help': 'Get details of certificate in human readable format'},
+         {'name': 'json', 'help': 'Output format is json'}],
          None)
 
-    actions["status"] = create_sub_command(
-        subparsers, "status", "Get any current change status for an enrollment",
-        [{"name": "enrollment-id", "help": "enrollment-id of the enrollment"},
-         {"name": "cn", "help": "Common Name of certificate"},
-         {"name": "validation-type", "help": "Use http or dns"}],
+    actions['status'] = create_sub_command(
+        subparsers, 'status', 'Get any current change status for an enrollment',
+        [{'name': 'enrollment-id', 'help': 'enrollment-id of the enrollment'},
+         {'name': 'cn', 'help': 'Common Name of certificate'},
+         {'name': 'validation-type', 'help': 'Use http or dns'}],
          None)
 
-    actions["create"] = create_sub_command(
-        subparsers, "create",
-        "Create a new enrollment from a yaml or json input file "
-        "(Use --file to specify the filename)",
-        [{"name": "force","help": "No value"},
-         {"name": "contract-id", "help": "Contract ID under which Enrollment/Certificate has to be created"},
-         {"name": "allow-duplicate-cn", "help": "Allows a new certificate to be created with the same CN as an existing certificate"}],
-        [{"name": "file", "help": "Input filename from templates folder to read enrollment details"}])
+    actions['create'] = create_sub_command(
+        subparsers, 'create',
+        'Create a new enrollment from a yaml or json input file '
+        '(Use --file to specify the filename)',
+        [{'name': 'force','help': 'No value'},
+         {'name': 'contract-id', 'help': 'Contract ID under which Enrollment/Certificate has to be created'},
+         {'name': 'allow-duplicate-cn', 'help': 'Allows a new certificate to be created with the same CN as an existing certificate'}],
+        [{'name': 'file', 'help': 'Input filename from templates folder to read enrollment details'}])
 
-    actions["update"] = create_sub_command(
-        subparsers, "update",
-        "Update an enrollment from a yaml or json input file. "
-        "(Use --file to specify the filename",
-        [{"name": "force", "help": "Skip the stdout display and user confirmation"},
-         {"name": "enrollment-id", "help": "enrollment-id of the enrollment"},
-         {"name": "cn", "help": "Common Name of Certificate to update"},
-         {"name": "file","help": "Input filename from templates folder to read enrollment details"},
-         {"name": "force-renewal","help": "force certificate renewal for enrollment"}])
+    actions['update'] = create_sub_command(
+        subparsers, 'update',
+        'Update an enrollment from a yaml or json input file. '
+        '(Use --file to specify the filename',
+        [{'name': 'force', 'help': 'Skip the stdout display and user confirmation'},
+         {'name': 'enrollment-id', 'help': 'enrollment-id of the enrollment'},
+         {'name': 'cn', 'help': 'Common Name of Certificate to update'},
+         {'name': 'file','help': 'Input filename from templates folder to read enrollment details'},
+         {'name': 'force-renewal','help': 'force certificate renewal for enrollment'}])
 
-    actions["cancel"] = create_sub_command(
-        subparsers, "cancel", "Cancel an existing change",
-        [{"name": "force", "help": "Skip the stdout display and user confirmation"},
-         {"name": "enrollment-id", "help": "enrollment-id of the enrollment"},
-         {"name": "cn", "help": "Common Name of certificate"}],
+    actions['cancel'] = create_sub_command(
+        subparsers, 'cancel', 'Cancel an existing change',
+        [{'name': 'force', 'help': 'Skip the stdout display and user confirmation'},
+         {'name': 'enrollment-id', 'help': 'enrollment-id of the enrollment'},
+         {'name': 'cn', 'help': 'Common Name of certificate'}],
         None)
 
-    actions["delete"] = create_sub_command(
-        subparsers, "delete", "Delete an existing enrollment forever!",
-        [{"name": "force", "help": "Skip the stdout display and user confirmation"},
-         {"name": "enrollment-id", "help": "enrollment-id of the enrollment"},
-         {"name": "cn", "help": "Common Name of certificate"}],
+    actions['delete'] = create_sub_command(
+        subparsers, 'delete', 'Delete an existing enrollment forever!',
+        [{'name': 'force', 'help': 'Skip the stdout display and user confirmation'},
+         {'name': 'enrollment-id', 'help': 'enrollment-id of the enrollment'},
+         {'name': 'cn', 'help': 'Common Name of certificate'}],
         None)
 
-    actions["audit"] = create_sub_command(
-        subparsers, "audit", "Generate a report in csv format by default. Can also use --json/xlsx",
-        [{"name": "output-file", "help": "Name of the outputfile to be saved to"},
-         {"name": "json", "help": "Output format is json"},
-         {"name": "xlsx", "help": "Output format is xlsx"},
-         {"name": "csv", "help": "Output format is csv"},
-         {"name": "include-change-details", "help": "Add additional details of pending certificates"}])
+    actions['audit'] = create_sub_command(
+        subparsers, 'audit', 'Generate a report in csv format by default. Can also use --json/xlsx',
+        [{'name': 'output-file', 'help': 'Name of the outputfile to be saved to'},
+         {'name': 'json', 'help': 'Output format is json'},
+         {'name': 'xlsx', 'help': 'Output format is xlsx'},
+         {'name': 'csv', 'help': 'Output format is csv'},
+         {'name': 'include-change-details', 'help': 'Add additional details of pending certificates'}])
 
-    actions["proceed"] = create_sub_command(
-        subparsers, "proceed", "Proceed to deploy certificate",
-        [{"name": "force", "help": "Skip the stdout display and user confirmation"},
-         {"name": "cert-file", "help": "Signed leaf certificate (Mandatory only in case of third party cert upload)"},
-         {"name": "trust-file", "help": "Signed certificate of CA (Mandatory only in case of third party cert upload)"},
-         {"name": "key-type", "help": "Either RSA or ECDSA (Mandatory only in case of third party cert upload)"},
-         {"name": "enrollment-id", "help": "enrollment-id of the enrollment"},
-         {"name": "cn", "help": "Common Name of certificate"}],
+    actions['proceed'] = create_sub_command(
+        subparsers, 'proceed', 'Proceed to deploy certificate',
+        [{'name': 'force', 'help': 'Skip the stdout display and user confirmation'},
+         {'name': 'cert-file', 'help': 'Signed leaf certificate (Mandatory only in case of third party cert upload)'},
+         {'name': 'trust-file', 'help': 'Signed certificate of CA (Mandatory only in case of third party cert upload)'},
+         {'name': 'key-type', 'help': 'Either RSA or ECDSA (Mandatory only in case of third party cert upload)'},
+         {'name': 'enrollment-id', 'help': 'enrollment-id of the enrollment'},
+         {'name': 'cn', 'help': 'Common Name of certificate'}],
         None)
 
-    actions["sbd-audit"] = create_sub_command(
-        subparsers, "sbd-audit", "list all sbd enabled certificates for an account",
-       [{"name": "output-file", "help": "Name of the outputfile to be saved to"},
-         {"name": "json", "help": "Output format is json"},
-         {"name": "xlsx", "help": "Output format is xlsx"},
-         {"name": "csv", "help": "Output format is csv"},
-         {"name": "include-change-details", "help": "Add additional details of pending certificates"}])
-    
+    actions['sbd-audit'] = create_sub_command(
+        subparsers, 'sbd-audit', 'list all sbd enabled certificates for an account',
+       [{'name': 'output-file', 'help': 'Name of the outputfile to be saved to'},
+         {'name': 'json', 'help': 'Output format is json'},
+         {'name': 'xlsx', 'help': 'Output format is xlsx'},
+         {'name': 'csv', 'help': 'Output format is csv'},
+         {'name': 'include-change-details', 'help': 'Add additional details of pending certificates'}])
+
     args = parser.parse_args()
 
     if len(sys.argv) <= 1:
         parser.print_help()
         return 0
 
-    if args.command == "help":
+    if args.command == 'help':
         if len(args.args) > 0:
             if actions[args.args[0]]:
                 actions[args.args[0]].print_help()
         else:
-            parser.prog = get_prog_name() + " help [command]"
+            parser.prog = get_prog_name() + ' help [command]'
             parser.print_help()
         return 0
 
-    if args.command not in ["setup", "sbd-audit"]:
+    if args.command not in ['setup', 'sbd-audit']:
         confirm_setup(args)
 
     # Override log level if user wants to run in debug mode
@@ -242,7 +239,7 @@ def cli():
     if args.debug:
         root_logger.setLevel(logging.DEBUG)
 
-    return getattr(sys.modules[__name__], args.command.replace("-", "_"))(args)
+    return getattr(sys.modules[__name__], args.command.replace('-', '_'))(args)
 
 
 def create_sub_command(
@@ -254,54 +251,54 @@ def create_sub_command(
     action = subparsers.add_parser(name=name, help=help, add_help=False)
 
     if required_arguments:
-        required = action.add_argument_group("required arguments")
+        required = action.add_argument_group('required arguments')
         for arg in required_arguments:
-            name = arg["name"]
-            del arg["name"]
-            required.add_argument("--" + name,
+            name = arg['name']
+            del arg['name']
+            required.add_argument('--' + name,
                                   required=True,
                                   **arg)
 
-    optional = action.add_argument_group("optional arguments")
+    optional = action.add_argument_group('optional arguments')
     if optional_arguments:
         for arg in optional_arguments:
-            name = arg["name"]
-            del arg["name"]
+            name = arg['name']
+            del arg['name']
             if name == 'force' or name == 'force-renewal' or name == 'show-expiration' or name == 'json' \
             or name == 'yaml' or name == 'yml' or name == 'leaf' or name == 'csv' or name == 'xlsx' \
             or name == 'chain' or name == 'info' or name == 'allow-duplicate-cn' or name == 'include-change-details':
                 optional.add_argument(
-                    "--" + name,
+                    '--' + name,
                     required=False,
                     **arg,
-                    action="store_true")
+                    action='store_true')
             else:
-                optional.add_argument("--" + name,
+                optional.add_argument('--' + name,
                                       required=False,
                                       **arg)
 
     optional.add_argument(
-        "--edgerc",
-        help="Location of the credentials file [$AKAMAI_EDGERC]",
+        '--edgerc',
+        help='Location of the credentials file [$AKAMAI_EDGERC]',
         default=os.path.join(
-            os.path.expanduser("~"),
+            os.path.expanduser('~'),
             '.edgerc'))
 
     optional.add_argument(
-        "--section",
-        help="Section of the credentials file [$AKAMAI_EDGERC_SECTION]",
-        default="default")
+        '--section',
+        help='Section of the credentials file [$AKAMAI_EDGERC_SECTION]',
+        default='default')
 
     optional.add_argument(
-        "--debug",
-        help="DEBUG mode to generate additional logs for troubleshooting",
-        action="store_true")
+        '--debug',
+        help='DEBUG mode to generate additional logs for troubleshooting',
+        action='store_true')
 
     optional.add_argument(
-        "--account-key",
-        "--accountkey",
-        help="Account Switch Key",
-        default="")
+        '--account-key',
+        '--accountkey',
+        help='Account Switch Key',
+        default='')
 
     return action
 
@@ -323,7 +320,7 @@ def check_enrollment_id(args):
 
     enrollmentResult = check_enrollment_id_in_cache(args)
     if enrollmentResult['found'] is False:
-        setup(args, invoker="check_enrollment_id")
+        setup(args, invoker='check_enrollment_id')
         enrollmentResult = check_enrollment_id_in_cache(args)
 
     return enrollmentResult
@@ -347,7 +344,7 @@ def check_enrollment_id_in_cache(args):
     for root, dirs, files in os.walk(enrollmentsPath):
         local_enrollments_file = 'enrollments.json'
         if local_enrollments_file in files:
-            with open(os.path.join(enrollmentsPath, local_enrollments_file), mode='r') as enrollmentsFileHandler:
+            with open(os.path.join(enrollmentsPath, local_enrollments_file)) as enrollmentsFileHandler:
                 enrollments_string_content = enrollmentsFileHandler.read()
             enrollments_json_content = json.loads(enrollments_string_content)
         else:
@@ -569,7 +566,7 @@ def lets_encrypt_challenges(args,cps_object, session, change_status_response_jso
             if numDomains > 0:
                 table = PrettyTable(
                     ['Domain', 'Status', 'Token','Expiration'])
-                table.align = "l"
+                table.align = 'l'
                 for everyDv in dvChangeInfoResponseJson['dv']:
                     rowData = []
                     for everyChallenge in everyDv['challenges']:
@@ -591,7 +588,7 @@ def lets_encrypt_challenges(args,cps_object, session, change_status_response_jso
             numDomains = len(dvChangeInfoResponseJson['dv'])
             if numDomains > 0:
                 table = PrettyTable(['Domain', 'Status', 'Response Body', 'Expiration'])
-                table.align = "l"
+                table.align = 'l'
                 for everyDv in dvChangeInfoResponseJson['dv']:
                     rowData = []
                     for everyChallenge in everyDv['challenges']:
@@ -675,9 +672,9 @@ def third_party_challenges(args,cps_object, session, change_status_response_json
                 exit(-1)
 
             try:
-                with open(args.cert_file,'r') as certificare_file_handler:
+                with open(args.cert_file) as certificare_file_handler:
                     certificate_content = certificare_file_handler.read()
-                with open(args.trust_file,'r') as trust_file_handler:
+                with open(args.trust_file) as trust_file_handler:
                     trust_content = trust_file_handler.read()
             except (FileNotFoundError, Exception) as e:
                 root_logger.info(e)
@@ -690,17 +687,17 @@ def third_party_challenges(args,cps_object, session, change_status_response_json
 
             csr_array = []
             csr_array.append(cert_and_trust)
-            
+
             upload_csr_final = {}
             upload_csr_final['certificatesAndTrustChains'] = csr_array
 
             certificate_content_str = json.dumps(upload_csr_final)
 
             update_endpoint = allowed_inputdata['update']
-            headers = get_headers("third-party-csr", "update")
+            headers = get_headers('third-party-csr', 'update')
             root_logger.info('Trying to upload 3rd party certificate information...')
             print('')
-            root_logger.debug("3rd Party POST Upload CSR Body: " + certificate_content_str)
+            root_logger.debug('3rd Party POST Upload CSR Body: ' + certificate_content_str)
             uploadResponse = cps_object.custom_post_call(session, headers, update_endpoint, data=certificate_content_str)
 
             if uploadResponse.status_code == 200:
@@ -744,7 +741,7 @@ def change_management(args,cps_object, session, change_status_response_json, all
     # certificate is waiting user input to move forward
     if status == 'wait-ack-change-management':
         endpoint = allowed_inputdata['info']
-        headers = get_headers("change-management-info", "info")
+        headers = get_headers('change-management-info', 'info')
         changeInfoResponse = cps_object.custom_get_call(session, headers, endpoint)
         if changeInfoResponse.status_code != 200:
             root_logger.info('Invalid API Response (' + str(changeInfoResponse.status_code) + '): Unable to fetch change management information\n')
@@ -808,7 +805,7 @@ def change_management(args,cps_object, session, change_status_response_json, all
                 "hash": "%s"
             }
             """ % (hash_value)
-            headers = get_headers("change-management-info", "update")
+            headers = get_headers('change-management-info', 'update')
             root_logger.info('\nTrying to acknowledge change...')
             post_call_response = cps_object.custom_post_call(session, headers, endpoint, data=ack_body)
             if post_call_response.status_code == 200:
@@ -855,7 +852,7 @@ def post_verification(args,cps_object, session, change_status_response_json, all
             print('')
             root_logger.info('POST VERIFICATION WARNING DETAILS:')
             endpoint = allowed_inputdata['info']
-            headers = get_headers("post-verification-warnings", "info")
+            headers = get_headers('post-verification-warnings', 'info')
             changeInfoResponse = cps_object.custom_get_call(session, headers, endpoint)
 
             if changeInfoResponse.status_code == 200:
@@ -876,7 +873,7 @@ def post_verification(args,cps_object, session, change_status_response_json, all
                 "acknowledgement": "acknowledge"
             }
             """
-            headers = get_headers("post-verification-warnings", "update")
+            headers = get_headers('post-verification-warnings', 'update')
             root_logger.info('Acknowledging the post-verification warnings...\n')
             post_call_response = cps_object.custom_post_call(session, headers, endpoint, data=ack_body)
             if post_call_response.status_code == 200:
@@ -1101,7 +1098,7 @@ def list(args):
                 root_logger.info(
                     'Fetching list with production expiration dates. Please wait...')
                 print('')
-            table.align = "l"
+            table.align = 'l'
 
             enrollments_json = enrollments_response.json()
             # Find number of groups using len function
@@ -1192,7 +1189,7 @@ def audit(args):
         #Default it to audit directory
         if not os.path.exists('audit'):
             os.makedirs('audit')
-        timestamp = '{:%Y%m%d_%H%M%S}'.format(datetime.datetime.now())
+        timestamp = f'{datetime.datetime.now():%Y%m%d_%H%M%S}'
         output_file_name = 'CPSAudit_' + str(timestamp) + '.csv'
         output_file = os.path.join('audit', output_file_name)
 
@@ -1220,7 +1217,7 @@ def audit(args):
     for root, dirs, files in os.walk(enrollmentsPath):
         local_enrollments_file = 'enrollments.json'
         if local_enrollments_file in files:
-            with open(os.path.join(enrollmentsPath, local_enrollments_file), mode='r') as enrollmentsFileHandler:
+            with open(os.path.join(enrollmentsPath, local_enrollments_file)) as enrollmentsFileHandler:
                 enrollments_string_content = enrollmentsFileHandler.read()
             print('')
             root_logger.info('Generating CPS audit file...')
@@ -1367,7 +1364,7 @@ def audit(args):
                 # Merge CSV files into XLSX
                 workbook = Workbook(os.path.join(xlsxFile))
                 worksheet = workbook.add_worksheet('Certificate')
-                with open(os.path.join(output_file), 'rt', encoding='utf8') as f:
+                with open(os.path.join(output_file), encoding='utf8') as f:
                     reader = csv.reader(f)
                     for r, row in enumerate(reader):
                         for c, col in enumerate(row):
@@ -1417,7 +1414,7 @@ def create(args):
             for root, dirs, files in os.walk(enrollmentsPath):
                 local_enrollments_file = 'enrollments.json'
                 if local_enrollments_file in files:
-                    with open(os.path.join(enrollmentsPath, local_enrollments_file), mode='r') as enrollmentsFileHandler:
+                    with open(os.path.join(enrollmentsPath, local_enrollments_file)) as enrollmentsFileHandler:
                         enrollments_string_content = enrollmentsFileHandler.read()
                     # root_logger.info(policyStringContent)
                     enrollments_json_content = json.loads(enrollments_string_content)
@@ -1452,8 +1449,8 @@ def create(args):
                         contracts_json_content.append(contractId)
 
                 if len(contracts_json_content) > 0:
-                    contractStr = ", ".join(contracts_json_content)
-                    root_logger.info("Try one of these: {}".format(contractStr))
+                    contractStr = ', '.join(contracts_json_content)
+                    root_logger.info(f'Try one of these: {contractStr}')
 
                 print('')
 
@@ -1469,7 +1466,7 @@ def create(args):
 
 
         try:
-            with open(filePath, mode='r') as inputFileHandler:
+            with open(filePath) as inputFileHandler:
                 file_content = inputFileHandler.read()
         except FileNotFoundError:
             root_logger.info('Unable to find file: ' + fileName)
@@ -1577,7 +1574,7 @@ def update(args):
         exit(0)
 
     try:
-        with open(os.path.join(fileName), mode='r') as inputFileHandler:
+        with open(os.path.join(fileName)) as inputFileHandler:
             file_content = inputFileHandler.read()
     except FileNotFoundError:
         root_logger.info('Unable to find file: ' + fileName)
@@ -1961,7 +1958,7 @@ def retrieve_deployed(args):
             jsonResp = deployment_details.json()
 
             # Add additional certificate details
-            jsonResp["certificate_details"] = {'subject': certificate_details.subject, 'not_valid_before': certificate_details.subject, 'expiration': certificate_details.expiration, 'issuer':certificate_details.issuer}
+            jsonResp['certificate_details'] = {'subject': certificate_details.subject, 'not_valid_before': certificate_details.subject, 'expiration': certificate_details.expiration, 'issuer':certificate_details.issuer}
 
             print(json.dumps(jsonResp, indent=4))
         else:
@@ -1976,7 +1973,7 @@ def confirm_setup(args):
 
     if not os.access(policies_dir, os.W_OK):
         print(
-            "Cache not found. You must create it to continue [Y/n]:",
+            'Cache not found. You must create it to continue [Y/n]:',
             end=' ')
 
         if str.lower(input()) == 'n':
@@ -2006,11 +2003,11 @@ def sbd_audit(args):
         #Default it to audit directory
         if not os.path.exists('audit'):
             os.makedirs('audit')
-        timestamp = '{:%Y%m%d_%H%M%S}'.format(datetime.datetime.now())
+        timestamp = f'{datetime.datetime.now():%Y%m%d_%H%M%S}'
         output_file_name = f'SBDAudit_{str(timestamp)}.csv'
         output_file = os.path.join('audit', output_file_name)
 
-    
+
 
     xlsxFile = f"{output_file.replace('.csv', '').replace('.xlsx', '').replace('.xls', '')}.xlsx"
     json_file = f"{output_file.replace('.csv', '').replace('.json', '')}.json"
@@ -2029,7 +2026,7 @@ def sbd_audit(args):
     for root, dirs, files in os.walk(enrollmentsPath):
         local_enrollments_file = 'enrollments.json'
         if local_enrollments_file in files:
-            with open(os.path.join(enrollmentsPath, local_enrollments_file), mode='r') as enrollmentsFileHandler:
+            with open(os.path.join(enrollmentsPath, local_enrollments_file)) as enrollmentsFileHandler:
                 enrollments_string_content = enrollmentsFileHandler.read()
             print('')
             root_logger.info('Generating SBD audit file...')
@@ -2176,7 +2173,7 @@ def sbd_audit(args):
                 # Merge CSV files into XLSX
                 workbook = Workbook(os.path.join(xlsxFile))
                 worksheet = workbook.add_worksheet('Certificate')
-                with open(os.path.join(output_file), 'rt', encoding='utf8') as f:
+                with open(os.path.join(output_file), encoding='utf8') as f:
                     reader = csv.reader(f)
                     for r, row in enumerate(reader):
                         for c, col in enumerate(row):
@@ -2201,20 +2198,20 @@ def sbd_audit(args):
 
 def get_prog_name():
     prog = os.path.basename(sys.argv[0])
-    if os.getenv("AKAMAI_CLI"):
-        prog = "akamai cps"
+    if os.getenv('AKAMAI_CLI'):
+        prog = 'akamai cps'
     return prog
 
 
 def get_cache_dir():
-    if os.getenv("AKAMAI_CLI_CACHE_DIR"):
-        return os.getenv("AKAMAI_CLI_CACHE_DIR")
+    if os.getenv('AKAMAI_CLI_CACHE_DIR'):
+        return os.getenv('AKAMAI_CLI_CACHE_DIR')
 
     return os.curdir
 
 if __name__ == '__main__':
     args = parser.get_args(args=None if sys.argv[1:] else ['--help'])
-    
-    
+
+
     if args.command == 'list':
         list(args)

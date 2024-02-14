@@ -17,7 +17,7 @@ In case you need quick explanation contact the initiators.
 Initiators: vbhat@akamai.com, aetsai@akamai.com, mkilmer@akamai.com
 """
 
-from cps import cli 
+from cps import cli
 
 # Final or common Successful exit
 if __name__ == '__main__':

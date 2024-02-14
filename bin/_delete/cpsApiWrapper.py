@@ -9,13 +9,15 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 """
+from __future__ import annotations
 
+import datetime
 import json
+
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
-import datetime
 
-class cps(object):
+class cps:
     def __init__(self, access_hostname, account_switch_key):
         self.access_hostname = access_hostname
         if account_switch_key != '':
@@ -63,8 +65,8 @@ class cps(object):
             (create_enrollmentRespose) Object with all details
         """
         headers = {
-            "Content-Type": "application/vnd.akamai.cps.enrollment.v11+json",
-            "Accept": "application/vnd.akamai.cps.enrollment-status.v1+json"
+            'Content-Type': 'application/vnd.akamai.cps.enrollment.v11+json',
+            'Accept': 'application/vnd.akamai.cps.enrollment-status.v1+json'
         }
         create_enrollment_url = 'https://' + self.access_hostname + \
             '/cps/v2/enrollments?contractId=' + contractId
@@ -96,8 +98,8 @@ class cps(object):
             (update_enrollmentRespose) Object with all details
         """
         headers = {
-            "Content-Type": "application/vnd.akamai.cps.enrollment.v11+json",
-            "Accept": "application/vnd.akamai.cps.enrollment-status.v1+json"
+            'Content-Type': 'application/vnd.akamai.cps.enrollment.v11+json',
+            'Accept': 'application/vnd.akamai.cps.enrollment-status.v1+json'
         }
         update_enrollment_url = 'https://' + self.access_hostname + \
             '/cps/v2/enrollments/' + str(enrollmentId) + '?allow-cancel-pending-changes=true'
@@ -131,7 +133,7 @@ class cps(object):
             (list_enrollmentsRespose) Object with all details
         """
         headers = {
-            "Accept": "application/vnd.akamai.cps.enrollments.v4+json"
+            'Accept': 'application/vnd.akamai.cps.enrollments.v4+json'
         }
         if contractId == 'optional':
             list_enrollments_url = 'https://' + self.access_hostname + \
@@ -166,7 +168,7 @@ class cps(object):
             (get_enrollmentRespose) Object with all details
         """
         headers = {
-            "Accept": "application/vnd.akamai.cps.enrollment.v11+json"
+            'Accept': 'application/vnd.akamai.cps.enrollment.v11+json'
         }
         get_enrollment_url = 'https://' + self.access_hostname + \
             '/cps/v2/enrollments/' + str(enrollmentId)
@@ -196,7 +198,7 @@ class cps(object):
             (get_change_statusRespose) Object with all details
         """
         headers = {
-            "Accept": "application/vnd.akamai.cps.change.v1+json"
+            'Accept': 'application/vnd.akamai.cps.change.v1+json'
         }
         get_change_status_url = 'https://' + self.access_hostname + \
             '/cps/v2/enrollments/' + \
@@ -227,7 +229,7 @@ class cps(object):
             (get_change_historyRespose) Object with all details
         """
         headers = {
-            "Accept": "application/vnd.akamai.cps.change-history.v3+json"
+            'Accept': 'application/vnd.akamai.cps.change-history.v3+json'
         }
         get_change_history_url = 'https://' + self.access_hostname + \
             '/cps/v2/enrollments/' + str(enrollmentId) + '/history/changes'
@@ -257,7 +259,7 @@ class cps(object):
             (cancel_change_response) Object with all details
         """
         headers = {
-            "Accept": "application/vnd.akamai.cps.change-id.v1+json"
+            'Accept': 'application/vnd.akamai.cps.change-id.v1+json'
         }
         cancel_change_url = 'https://' + self.access_hostname + \
             '/cps/v2/enrollments/' + str(enrollmentId) + '/changes/' + str(changeId)
@@ -288,7 +290,7 @@ class cps(object):
             (delete_enrollment_response) Object with all details
         """
         headers = {
-            "Accept": "application/vnd.akamai.cps.enrollment-status.v1+json"
+            'Accept': 'application/vnd.akamai.cps.enrollment-status.v1+json'
         }
 
         #/cps/v2/enrollments/{enrollmentId}
@@ -321,7 +323,7 @@ class cps(object):
             (get_certificate_response) Object with all details
         """
         headers = {
-            "Accept": "application/vnd.akamai.cps.deployment.v3+json"
+            'Accept': 'application/vnd.akamai.cps.deployment.v3+json'
         }
         get_certificate_url = 'https://' + self.access_hostname + \
             '/cps/v2/enrollments/' + \
@@ -352,7 +354,7 @@ class cps(object):
             (customCall_response) Object with all details
         """
         headers = {
-            "Accept": "application/vnd.akamai.cps.dv-challenges.v2+json"
+            'Accept': 'application/vnd.akamai.cps.dv-challenges.v2+json'
         }
         dvChangeInfo_url = 'https://' + self.access_hostname + endpoint
 
@@ -425,7 +427,7 @@ class cps(object):
 
 # Below class encapsulates the certificate members, this is done to
 # decode a certificate into its members or fields
-class certificate(object):
+class certificate:
     def __init__(self, certificate):
         self.cert = x509.load_pem_x509_certificate(certificate.encode(), default_backend())
 
