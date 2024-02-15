@@ -57,7 +57,7 @@ class AkamaiParser(argparse.ArgumentParser):
 
         parser._optionals.title = 'Global options'
 
-        parser.add_argument('-a', '--accountkey',
+        parser.add_argument('-a', '--accountkey', '--account-key',
                             metavar='', type=str, dest='account_switch_key',
                             help='account switch key (Akamai Internal Only)')
         parser.add_argument('-e', '--edgerc',
