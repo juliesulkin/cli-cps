@@ -7,10 +7,19 @@ import time
 from logging.config import dictConfig
 from pathlib import Path
 
+import coloredlogs
 import utils.emojis as emoji
 from rich import print
 from rich.console import Console
 from rich.panel import Panel
+
+custom_level_styles = {
+    'debug': {'color': 'cyan'},
+    'info': {'color': 'white'},
+    'warning': {'color': 'yellow'},
+    'error': {'color': 'red'},
+    'critical': {'color': 'magenta'},
+}
 
 
 def setup_logger(args):
@@ -18,20 +27,30 @@ def setup_logger(args):
     Create folders and copy config json when running via Akamai CLI
     """
     Path('logs').mkdir(parents=True, exist_ok=True)
+    Path('config').mkdir(parents=True, exist_ok=True)
     origin_config = filepath_logging_config(config_file='logging.json')
-    logging.Formatter.converter = time.gmtime
 
     with open(origin_config) as f:
         log_cfg = json.load(f)
     log_cfg['formatters']['long']['()'] = 'utils.cli.CLIFormatter'
-    # log_cfg['handlers']['file_handler']['level'] = level_int
 
     dictConfig(log_cfg)
+    logging.Formatter.converter = time.gmtime
+
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
-    # logger.debug(f'Log Level: {args.log_level}, Numeric Level: {level_int}')
-    logger.debug(f'Log Level: {args.log_level}')
 
+    # Set up colored console logs using coloredlogs library
+    coloredlogs.install(
+        logger=logger,
+        level=args.log_level.upper(),
+        level_styles=custom_level_styles,
+        fmt='%(levelname)-8s: %(message)s',
+        field_styles={
+            'asctime': {'color': 'black'},
+            'levelname': {'color': 'black', 'bold': True},
+        },
+    )
     return logger
 
 
