@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os.path
-import sys
 import unittest
 from unittest.mock import patch
 
@@ -9,8 +8,6 @@ import pytest
 from akamai_apis.idm import IdentityAccessManagement
 from mock_factory import MockFactory
 from mock_factory import Namespace
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../bin')))
 
 
 class TestAccountLookup(unittest.TestCase):
