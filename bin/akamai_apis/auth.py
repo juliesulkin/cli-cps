@@ -22,7 +22,7 @@ class AkamaiSession:
         self.host = self.edgerc.get(self.section, 'host')
         self.host = f'https://{self.host}'
         self.baseurl = self.host
-        self.account_switch_key = args.account_switch_key
+        self.account_switch_key = args.account_switch_key if 'account_switch_key' in args.__dict__.keys() else False
         self._params = {}
 
         self.s = requests.Session()

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import logging
 
+import utils.emojis as emoji
 from akamai_apis.auth import AkamaiSession
 from rich.console import Console
-from utils.emojis import emojis as emoji
 
 
 class IdentityAccessManagement(AkamaiSession):
@@ -27,6 +27,7 @@ class IdentityAccessManagement(AkamaiSession):
 
     def search_account(self):
         url = f'{self.baseurl}/api-clients/self/account-switch-keys'
+        params = {}
         if self.account_switch_key:
             params = {'search': self.account_switch_key.split(':')[0]}
         resp = self.s.get(url, params=params, headers=self.headers)
