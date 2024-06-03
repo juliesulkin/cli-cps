@@ -9,8 +9,15 @@ from pathlib import Path
 import yaml
 from akamai_apis.cps import Enrollment
 from rich import print_json
+from rich.console import Console
+from rich.table import Table
+from utils import cli_logging as lg
+from utils import emojis
 from utils import utility as util
 from xlsxwriter.workbook import Workbook
+
+
+console = Console(stderr=True)
 
 
 def list_enrollment(cps: Enrollment, args, logger) -> None:
@@ -18,8 +25,30 @@ def list_enrollment(cps: Enrollment, args, logger) -> None:
     resp = cps.list_enrollment(args.contract)
     if not resp.ok:
         logger.error(resp.text)
+        exit(1)
     else:
         enrollments = resp.json()['enrollments']
+
+    lg.console_header(console, f'{len(enrollments)} enrollments found', emojis.gem)
+    console.print()
+
+    table = Table(title='Enrollments')
+    table.add_column('Enrollment ID')
+    table.add_column('Common Name (SAN Count)')
+    table.add_column('Certificate Type')
+    table.add_column('*In-Progress*')
+    table.add_column('Test on Staging First')
+    table.add_column('Slot')
+    table.add_column('SNI')
+
+    for enrollment in enrollments:
+        (enrollment_id, common_name, certificate_type,
+         in_progress, change_management, slot, sni) = util.format_enrollments_table(logger, enrollment)
+        table.add_row(str(enrollment_id), common_name, certificate_type, in_progress, change_management, str(slot), sni)
+    console.print(table)
+    console.print('[dim][i]** means enrollment has existing pending changes')
+
+    console.print()
     return enrollments
 
 
