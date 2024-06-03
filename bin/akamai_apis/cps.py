@@ -1,0 +1,282 @@
+# Techdocs reference
+# https://techdocs.akamai.com/cps/reference/api-summary
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+
+from akamai_apis import headers
+from akamai_apis.auth import AkamaiSession
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
+
+
+class Enrollment(AkamaiSession):
+    def __init__(self,
+                 account_switch_key: str | None = None,
+                 section: str | None = None,
+                 edgerc: str | None = None,
+                 logger: logging.Logger = None):
+        super().__init__(account_switch_key=account_switch_key, section=section, edgerc=edgerc)
+        self.MODULE = f'{self.base_url}/cps/v2'
+        self.headers = {'accept': 'application/vnd.akamai.cps.enrollments.v11+json'}
+        self._params = super().params
+        self.logger = logger
+
+    def get_contract(self):
+        url = f'{self.base_url}/contract-api/v1/contracts/identifiers?depth=TOP'
+        return self.session.get(url, params=self._params)
+
+    def get_enrollment(self, enrollment_id: int):
+        """
+        Gets an enrollment.
+        """
+        self.logger.debug(f'Getting details for enrollment-id: {enrollment_id}')
+        headers = {'accept': 'application/vnd.akamai.cps.enrollment.v11+json'}
+        url = f'{self.MODULE}/enrollments/{enrollment_id}'
+        if self.account_switch_key:
+            url = f'{url}?accountSwitchKey={self.account_switch_key}'
+
+        return self.session.get(url, headers=headers)
+
+    async def get_enrollment_async(self, enrollment_id: int, rate_limit: int):
+        headers = {'accept': 'application/vnd.akamai.cps.enrollment.v11+json'}
+        url = f'{self.MODULE}/enrollments/{enrollment_id}'
+        if self.account_switch_key:
+            url = f'{url}?accountSwitchKey={self.account_switch_key}'
+
+        async with asyncio.Semaphore(rate_limit):
+            # loop = asyncio.get_running_loop()
+            resp = await asyncio.to_thread(self.session.get, url, headers=headers)
+            try:
+                if resp.ok:
+                    return await asyncio.to_thread(resp.json)
+                time.sleep(40)
+            finally:
+                resp.close()
+
+    async def fetch_all(self, enrollment_ids: list, rate_limit: int | None = 5):
+        tasks = [self.get_enrollment_async(enrollment_id, rate_limit) for enrollment_id in enrollment_ids]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        return results
+
+    def create_enrollment(self, contract_id: str, payload: dict):
+        """
+        Creates an enrollment that contains all the information about the process
+        that your certificate goes through from the time you request it, through renewal,
+        and as you obtain subsequent versions.
+        """
+        headers = {'accept: application/vnd.akamai.cps.enrollment-status.v1+json',
+                   'content-type: application/vnd.akamai.cps.enrollment.v12+json'}
+
+        url = f'{self.MODULE}/enrollments?contractId={contract_id}'
+
+        if self.account_switch_key:
+            url = f'{url}?accountSwitchKey={self.account_switch_key}'
+
+        resp = self.session.post(url, data=payload, headers=headers)
+        return resp
+
+    def list_enrollment(self, contract_id: str | None = None):
+        """
+        A list of the names of each enrollment.
+        """
+        if contract_id:
+            self._params['contractId'] = contract_id
+        url = f'{self.MODULE}/enrollments'
+        resp = self.session.get(url, params=self._params, headers=self.headers)
+        self.logger.debug(resp.url)
+        return resp
+
+    def update_enrollment(self, enrollment_id: int, payload: dict,
+                          renewal: bool | None = False):
+        """
+        Updates an enrollment with changes.
+
+        """
+        print()
+        headers = {'Content-Type': 'application/vnd.akamai.cps.enrollment.v11+json',
+                   'Accept': 'application/vnd.akamai.cps.enrollment-status.v1+json'
+                   }
+        url = f'{self.MODULE}/enrollments/{enrollment_id}?allow-cancel-pending-changes=true'
+        if renewal:
+            url = f'{url}&force-renewal=true'
+        if self.account_switch_key:
+            url = f'{url}&accountSwitchKey={self.account_switch_key}'
+        resp = self.session.put(url, data=payload, headers=headers)
+        return resp
+
+    def remove_enrollment(self, enrollment_id: int):
+        """
+        Removes an enrollment from CPS.
+        """
+        headers = {'Accept': 'application/vnd.akamai.cps.enrollment-status.v1+json'}
+        url = f'{self.MODULE}/enrollments/{enrollment_id}'
+        if self.account_switch_key:
+            url = f'{url}?accountSwitchKey={self.account_switch_key}'
+        resp = self.session.delete(url, headers=headers)
+        return resp
+
+    def get_dv_history(self, enrollment_id: int):
+        """
+        Domain name Validation history for the enrollment.
+        """
+        url = f'{self.MODULE}/enrollments/{enrollment_id}/dv-history'
+        resp = self.session.get(url, params=self._params, headers=headers)
+        return resp
+
+    def get_change_status(self, enrollment_id: int, change_id: int):
+        """
+        Gets the status of a pending change.
+        """
+        headers = {'Accept': 'application/vnd.akamai.cps.change.v2+json'}
+        url = f'{self.MODULE}/enrollments/{enrollment_id}/changes/{change_id}'
+        resp = self.session.get(url, params=self._params, headers=headers)
+        return resp
+
+    def cancel_change(self, enrollment_id: int, change_id: int):
+        """
+        Cancels a pending change.
+        """
+        headers = {'Accept': 'application/vnd.akamai.cps.change-id.v1+json'}
+        url = f'{self.MODULE}/enrollments/{enrollment_id}/changes/{change_id}'
+        if self.account_switch_key:
+            url = f'{url}?accountSwitchKey={self.account_switch_key}'
+        resp = self.session.delete(url, headers=headers)
+        return resp
+
+
+class Deployment(AkamaiSession):
+    def __init__(self,
+                 enrollment_id: int,
+                 account_switch_key: str | None = None,
+                 section: str | None = None,
+                 edgerc: str | None = None,
+                 logger: logging.Logger = None):
+        super().__init__(account_switch_key=account_switch_key, section=section, edgerc=edgerc)
+        self.MODULE = f'{self.base_url}/cps/v2'
+        self.enrollment_id = enrollment_id
+        self.headers = {'accept': 'application/vnd.akamai.cps.deployment.v3+json'}
+        self.account_switch_key = account_switch_key if account_switch_key else None
+        self._params = super().params
+        self.logger = logger
+
+    def list_deployments(self):
+        """
+        Lists the deployments for an enrollment.
+        """
+        url = f'{self.MODULE}/enrollments/{self.enrollment_id}/deployments'
+        url = f'{url}?accountSwitchKey={self.account_switch_key}' if self.account_switch_key else url
+        resp = self.session.get(url, headers=self.headers)
+        return resp
+
+    def get_product_deployement(self):
+        """
+        Gets the enrollments deployed on the production network.
+        """
+        url = f'{self.MODULE}/enrollments/{self.enrollment_id}/deployments/production'
+        url = f'{url}?accountSwitchKey={self.account_switch_key}' if self.account_switch_key else url
+        return self.session.get(url, headers=self.headers)
+
+    def get_staging_deployement(self):
+        """
+        Gets the enrollments deployed on the staging network.
+        """
+        url = f'{self.MODULE}/enrollments/{self.enrollment_id}/deployments/staging'
+        url = f'{url}?accountSwitchKey={self.account_switch_key}' if self.account_switch_key else url
+        return self.session.get(url, params=self._params, headers=self.headers)
+
+
+class Changes(AkamaiSession):
+    def __init__(self,
+                 enrollment_id: int,
+                 account_switch_key: str | None = None,
+                 section: str | None = None,
+                 edgerc: str | None = None,
+                 logger: logging.Logger = None):
+        super().__init__(account_switch_key=account_switch_key, section=section, edgerc=edgerc)
+        self.MODULE = f'{self.base_url}/cps/v2'
+        self.enrollment_id = enrollment_id
+        self.headers = {'accept': 'application/vnd.akamai.cps.change-history.v5+json'}
+        self.account_switch_key = account_switch_key if account_switch_key else None
+        self._params = super().params
+        self.logger = logger
+
+    def get_change_history(self):
+        """
+        Change history of an enrollment.
+        """
+        url = f'{self.MODULE}/enrollments/{self.enrollment_id}/history/changes'
+        resp = self.session.get(url, params=self._params, headers=self.headers)
+        return resp
+
+    def get_change_status(self, change_id: int):
+        """
+        Gets the status of a pending change.
+        """
+        headers = {'accept': 'application/vnd.akamai.cps.change.v2+json'}
+        url = f'{self.MODULE}/enrollments/{self.enrollment_id}/changes/{change_id}'
+        return self.session.get(url, params=self._params, headers=headers)
+
+    def cancel_change_status(self, change_id: int):
+        """
+        Gets the status of a pending change.
+        """
+        headers = {'accept': 'application/vnd.akamai.cps.change-id.v1+json'}
+        url = f'{self.MODULE}/enrollments/{self.enrollment_id}/changes/{change_id}'
+        return self.session.delete(url,  headers=headers)
+
+    def get_change(self, change_id: int, allowedInputTypeParam):
+        """
+        Get detailed information of a pending change
+        """
+        headers = {'accept': 'application/vnd.akamai.cps.change-management-info.v1+json'}
+        url = f'{self.MODULE}/enrollments/{self.enrollment_id}/changes/{change_id}'
+        url = f'{url}/input/info/{allowedInputTypeParam}'
+        return self.session.get(url, params=self._params, headers=headers)
+
+    def update_change(self, change_id: int, allowedInputTypeParam):
+        """
+        Updates a pending change.
+        """
+        headers = {'accept: application/vnd.akamai.cps.change-id.v1+json',
+                   'content-type: application/vnd.akamai.cps.certificate-and-trust-chain.v2+json'}
+        url = f'{self.MODULE}/enrollments/{self.enrollment_id}/changes/{change_id}'
+        url = f'{url}/input/update/{allowedInputTypeParam}'
+        return self.session.post(url, headers=headers)
+
+    def get_staging_deployement(self, change_id):
+        """
+        Gets the current deployment schedule settings describing when a change deploys to the network.
+        """
+        headers = {'accept': 'application/vnd.akamai.cps.deployment-schedule.v1+json'}
+        url = f'{self.MODULE}/enrollments/{self.enrollment_id}/changes/{change_id}/deployment-schedule'
+        return self.session.get(url, params=self._params, headers=headers)
+
+
+class Certificate:
+    """
+    Below class encapsulates the certificate members, this is done to
+    decode a certificate into its members or fields
+    """
+    def __init__(self, certificate):
+        self.cert = x509.load_pem_x509_certificate(certificate.encode(), default_backend())
+
+        self.oids = x509.oid.ExtensionOID()
+        try:
+            self.ext = self.cert.extensions.get_extension_for_oid(self.oids.SUBJECT_ALTERNATIVE_NAME)
+            self.sanList = []
+            self.sanList = (str(self.ext.value.get_values_for_type(x509.DNSName)).replace(',', '').replace('[',  '').replace(']', ''))
+        except Exception:
+            pass  # Not every certificate will have SAN
+
+        self.expiration = str(self.cert.not_valid_after.date()) + ' ' + str(self.cert.not_valid_after.time()) + ' UTC'
+
+        for attribute in self.cert.subject:
+            self.subject = attribute.value
+
+        self.not_valid_before = str(self.cert.not_valid_before.date()) + ' ' + str(self.cert.not_valid_before.time()) + ' UTC'
+
+        for attribute in self.cert.issuer:
+            self.issuer = attribute.value

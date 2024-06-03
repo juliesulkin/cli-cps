@@ -11,7 +11,7 @@ from pathlib import Path
 import coloredlogs
 
 custom_level_styles = {
-    'debug': {'color': 'cyan'},
+    'debug': {'color': 'black'},
     'info': {'color': 'white'},
     'warning': {'color': 'yellow'},
     'error': {'color': 'red'},
@@ -28,12 +28,11 @@ def setup_logger(args):
     with open(origin_config) as f:
         log_cfg = json.load(f)
     log_cfg['formatters']['long']['()'] = 'utils.cli.CLIFormatter'
+    log_cfg['handlers']['file_handler']['level'] = args.log_level.upper()
 
     dictConfig(log_cfg)
     logging.Formatter.converter = time.gmtime
-
     logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
 
     # Set up colored console logs using coloredlogs library
     coloredlogs.install(
