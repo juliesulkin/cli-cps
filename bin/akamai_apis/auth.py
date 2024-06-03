@@ -1,32 +1,50 @@
 from __future__ import annotations
 
 import logging
+import sys
+from configparser import NoSectionError
 from pathlib import Path
 
 import requests
 from akamai.edgegrid import EdgeGridAuth
 from akamai.edgegrid import EdgeRc
-
-logger = logging.getLogger(__name__)
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
 class AkamaiSession:
+    def __init__(self,
+                 account_switch_key: str | None = None,
+                 section: str | None = None,
+                 edgerc: str | None = None,
+                 contract_id: int | None = None,
+                 group_id: int | None = None,
+                 logger: logging.Logger = None):
 
-    def __init__(self, args):
-        self.headers = {'PAPI-Use-Prefixes': 'true',
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'}
-
-        self.edgerc = EdgeRc(f'{str(Path.home())}/.edgerc')
-        self.section = args.section if args.section else 'default'
-        self.host = self.edgerc.get(self.section, 'host')
-        self.host = f'https://{self.host}'
-        self.baseurl = self.host
-        self.account_switch_key = args.account_switch_key if 'account_switch_key' in args.__dict__.keys() else False
+        self.edgerc_file = edgerc if edgerc else EdgeRc(f'{str(Path.home())}/.edgerc')
+        self.account_switch_key = account_switch_key if account_switch_key else None
+        self.contract_id = contract_id if contract_id else None
+        self.group_id = group_id if group_id else None
+        self.section = section if section else 'default'
+        self.logger = logger
         self._params = {}
 
-        self.s = requests.Session()
-        self.s.auth = EdgeGridAuth.from_edgerc(self.edgerc, self.section)
+        try:
+            self.host = self.edgerc_file.get(self.section, 'host')
+            self.base_url = f'https://{self.host}'
+            self.session = requests.Session()
+            self.session.auth = EdgeGridAuth.from_edgerc(self.edgerc_file, self.section)
+        except NoSectionError:
+            sys.exit(self.logger.error(f'edgerc section "{self.section}" not found'))
+
+        retry_strategy = Retry(total=3,
+                               backoff_factor=1,
+                               status_forcelist=[429, 500, 502, 503, 504],
+                               )
+
+        adapter_with_retries = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount('http://', adapter_with_retries)
+        self.session.mount('https://', adapter_with_retries)
 
     @property
     def params(self) -> dict:
@@ -36,3 +54,7 @@ class AkamaiSession:
     @params.setter
     def params(self, new_dict):
         self._params.update(new_dict)
+
+
+if __name__ == '__main__':
+    pass

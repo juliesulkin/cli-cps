@@ -67,12 +67,11 @@ class AkamaiParser(argparse.ArgumentParser):
                             metavar='', type=str, dest='section', default='default',
                             help='section of the credentials file [$AKAMAI_EDGERC_SECTION]')
         parser.add_argument('-v', '--version', action='version', version='%(prog)s v1.0.0',
-                             help='show akamai cli utility version')
+                             help='show akamai cli cps version')
         parser.add_argument('-h', '--help', action='help', help='show this help message and exit')
         parser.add_argument('-l', '--log-level',
                             choices=['debug', 'info', 'warning', 'error', 'critical'],
-                            default='info',
-                            help='Set the log level. Too noisy, increase to warning')
+                            default='info')
 
         subparsers = parser.add_subparsers(title='commands', metavar='', dest='command')
 
@@ -168,5 +167,4 @@ class AkamaiParser(argparse.ArgumentParser):
 
             optional.add_argument('--log-level',
                                   choices=['debug', 'info', 'warning', 'error', 'critical'],
-                                  default='info',
-                                  help='Set the log level. Too noisy, increase to warning')
+                                  default='info')

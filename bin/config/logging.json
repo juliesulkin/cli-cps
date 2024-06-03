@@ -19,11 +19,11 @@
     "file_handler": {
       "class": "logging.handlers.TimedRotatingFileHandler",
       "level": "INFO",
-      "filename": "logs/onboard_eaas.log",
+      "filename": "logs/cps.log",
       "formatter": "long",
       "encoding": "utf8",
       "delay": true,
-      "when": "D",
+      "when": "h",
       "interval": 1,
       "backupCount": 2
     }

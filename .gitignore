@@ -111,3 +111,9 @@ enrollments.json
 
 .pytest_cache
 test
+audit
+*.json
+*.yaml
+logs
+config
+*.json

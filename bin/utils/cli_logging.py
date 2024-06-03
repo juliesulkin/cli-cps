@@ -3,18 +3,18 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import time
 from logging.config import dictConfig
 from pathlib import Path
 
-import coloredlogs
-import utils.emojis as emoji
 from rich import print
 from rich.console import Console
 from rich.panel import Panel
+from utils import emojis as emoji
 
 custom_level_styles = {
-    'debug': {'color': 'cyan'},
+    'debug': {'color': 'black'},
     'info': {'color': 'white'},
     'warning': {'color': 'yellow'},
     'error': {'color': 'red'},
@@ -28,18 +28,17 @@ def setup_logger(args):
     """
     Path('logs').mkdir(parents=True, exist_ok=True)
     Path('config').mkdir(parents=True, exist_ok=True)
-    origin_config = filepath_logging_config(config_file='logging.json')
+    origin_config = load_local_config_file(config_file='logging.json')
 
     with open(origin_config) as f:
         log_cfg = json.load(f)
     log_cfg['formatters']['long']['()'] = 'utils.cli.CLIFormatter'
+    log_cfg['handlers']['file_handler']['level'] = args.log_level.upper()
 
     dictConfig(log_cfg)
     logging.Formatter.converter = time.gmtime
-
     logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-
+    """
     # Set up colored console logs using coloredlogs library
     coloredlogs.install(
         logger=logger,
@@ -51,20 +50,29 @@ def setup_logger(args):
             'levelname': {'color': 'black', 'bold': True},
         },
     )
+    """
     return logger
 
 
-def filepath_logging_config(config_file: str) -> str:
+def load_local_config_file(config_file: str) -> str:
     docker_path = os.path.expanduser(Path('/cli'))
     local_home_path = os.path.expanduser(Path('~/.akamai-cli/src/cli-cps'))
 
-    if Path(docker_path).exists():  # docker
-        return f'{docker_path}/.akamai-cli/src/cli-cps/bin/config/{config_file}'
-    elif Path(local_home_path).exists():  # local OS cli
-        env_path = f'{local_home_path}/bin/config/{config_file}'
-        return os.path.expanduser(env_path)
-    else:  # local python development
-        return f'{os.getcwd()}/bin/config/{config_file}'
+    if Path(docker_path).exists():
+        origin_config = f'{docker_path}/.akamai-cli/src/cli-cps/bin/config/{config_file}'
+    elif Path(local_home_path).exists():
+        origin_config = f'{local_home_path}/bin/config/{config_file}'
+        origin_config = os.path.expanduser(origin_config)
+    else:
+        origin_config = f'{os.getcwd()}/bin/config/{config_file}'
+
+    try:
+        shutil.copy2(origin_config, f'config/{config_file}')
+    except FileNotFoundError:
+        origin_config = f'{os.getcwd()}/bin/config/{config_file}'
+        shutil.copy2(origin_config, f'config/{config_file}')
+
+    return origin_config
 
 
 def console_panel(console: Console, header: str, title: str,
