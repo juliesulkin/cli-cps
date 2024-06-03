@@ -8,7 +8,6 @@ import time
 from logging.config import dictConfig
 from pathlib import Path
 
-import coloredlogs
 from rich import print
 from rich.console import Console
 from rich.panel import Panel
@@ -39,7 +38,7 @@ def setup_logger(args):
     dictConfig(log_cfg)
     logging.Formatter.converter = time.gmtime
     logger = logging.getLogger()
-
+    """
     # Set up colored console logs using coloredlogs library
     coloredlogs.install(
         logger=logger,
@@ -51,6 +50,7 @@ def setup_logger(args):
             'levelname': {'color': 'black', 'bold': True},
         },
     )
+    """
     return logger
 
 
