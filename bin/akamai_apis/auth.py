@@ -17,7 +17,6 @@ class AkamaiSession:
                  account_switch_key: str | None = None,
                  section: str | None = None,
                  edgerc: str | None = None,
-                 cookies: str | None = None,
                  contract_id: int | None = None,
                  group_id: int | None = None,
                  logger: logging.Logger = None):
@@ -27,8 +26,8 @@ class AkamaiSession:
         self.contract_id = contract_id if contract_id else None
         self.group_id = group_id if group_id else None
         self.section = section if section else 'default'
-        self.cookies = self.update_acc_cookie(cookies)
         self.logger = logger
+        self._params = {}
 
         try:
             self.host = self.edgerc_file.get(self.section, 'host')

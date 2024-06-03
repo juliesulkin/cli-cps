@@ -10,27 +10,28 @@ from rich.console import Console
 
 
 class IdentityAccessManagement(AkamaiSession):
-    def __init__(self, logger: logging.Logger, args):
+    def __init__(self, args, logger: logging.Logger = None):
         super().__init__(args)
-        self.baseurl = f'{self.baseurl}/identity-management/v3'
+        self.base_url = f'{self.base_url}/identity-management/v3'
         self.headers = {'Accept': 'application/json'}
         self.logger = logger
         self.account_name = None
+        self.account_switch_key = self.account_switch_key.__dict__['account_switch_key']
 
     def exit_condition(self):
         print()
-        self.logger.error(f'invalid account switch key {self.account_switch_key}')
+        self.logger.error(f'invalid account switch key {super().account_switch_key}')
         console = Console(stderr=True)
         exit(
             console.print(f'{emoji.poop} [red]Error looking up account. Exiting....\n')
         )
 
     def search_account(self):
-        url = f'{self.baseurl}/api-clients/self/account-switch-keys'
+        url = f'{self.base_url}/api-clients/self/account-switch-keys'
         params = {}
         if self.account_switch_key:
             params = {'search': self.account_switch_key.split(':')[0]}
-        resp = self.s.get(url, params=params, headers=self.headers)
+        resp = self.session.get(url, params=params, headers=self.headers)
 
         if not resp.ok:
             self.exit_condition()
