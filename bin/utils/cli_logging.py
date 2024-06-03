@@ -56,10 +56,10 @@ def setup_logger(args):
 
 def filepath_logging_config(config_file: str) -> str:
     docker_path = os.path.expanduser(Path('/cli'))
-    local_home_path = os.path.expanduser(Path('~/.akamai-cli/src/cli-eaas'))
+    local_home_path = os.path.expanduser(Path('~/.akamai-cli/src/cli-cps'))
 
     if Path(docker_path).exists():  # docker
-        return f'{docker_path}/.akamai-cli/src/cli-eass/bin/config/{config_file}'
+        return f'{docker_path}/.akamai-cli/src/cli-cps/bin/config/{config_file}'
     elif Path(local_home_path).exists():  # local OS cli
         env_path = f'{local_home_path}/bin/config/{config_file}'
         return os.path.expanduser(env_path)

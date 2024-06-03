@@ -25,6 +25,7 @@ def list(args, logger):
     header_msg = f'\nAccount: {account_name}\n'
     header_title = 'CPS CLI: [i]List Enrollments[/i]'
     lg.console_panel(console, header_msg, header_title, align='center')
+    console.print()
 
 
 if __name__ == '__main__':
