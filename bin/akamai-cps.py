@@ -11,7 +11,6 @@ from utils import cps as util_cps
 from utils.parser import AkamaiParser as Parser
 from utils.utility import Utility
 
-
 console = Console(stderr=True)
 
 

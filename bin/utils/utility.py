@@ -189,3 +189,18 @@ def show_enrollments_table(logger, enrollments: list,
     headers = ['Enrollment ID', 'Common Name (SAN Count)', 'Certificate Type', '*In-Progress*', 'Test on Staging First', 'Expiration']
     print(tabulate(sorted_output, headers=headers, tablefmt='psql'))
     logger.warning('** means enrollment has existing pending changes')
+
+
+def format_enrollments_table(logger, enrollment: list, show_expiration: bool | None = False):
+
+    enrollment_id = f'*{enrollment["id"]}*' if len(enrollment['pendingChanges']) != 0 else enrollment['id']
+    san_count = len(enrollment['csr']['sans']) if len(enrollment['csr']['sans']) > 0 else 1
+    common_name = f'{enrollment["csr"]["cn"]} ({san_count})'
+    certificate_type = f'{enrollment["validationType"]} {enrollment["certificateType"]}'
+    in_progress = '*Yes*' if len(enrollment['pendingChanges']) != 0 else ' No'
+    change_management = 'Yes' if enrollment['changeManagement'] else 'No'
+    slot = (','.join([str(item) for item in enrollment['assignedSlots']])
+            if (len(enrollment['assignedSlots']) > 0) else '[dim] no slot assigned')
+    sni = 'Yes' if enrollment['networkConfiguration']['sniOnly'] else 'No'
+
+    return enrollment_id, common_name, certificate_type, in_progress, change_management, slot, sni
