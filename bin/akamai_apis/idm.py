@@ -11,12 +11,11 @@ from rich.console import Console
 
 class IdentityAccessManagement(AkamaiSession):
     def __init__(self, args, logger: logging.Logger = None):
-        super().__init__(args)
+        super().__init__(args, logger)
         self.base_url = f'{self.base_url}/identity-management/v3'
         self.headers = {'Accept': 'application/json'}
         self.logger = logger
         self.account_name = None
-        self.account_switch_key = self.account_switch_key.__dict__['account_switch_key']
 
     def exit_condition(self):
         print()

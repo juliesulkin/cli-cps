@@ -17,17 +17,13 @@ logger = logging.getLogger(__name__)
 
 class Cps(AkamaiSession):
     def __init__(self, args, logger: logging.Logger = None):
-        super().__init__(args)
+        super().__init__(args, logger)
         self.logger = logger
 
 
 class Enrollment(AkamaiSession):
-    def __init__(self,
-                 account_switch_key: str | None = None,
-                 section: str | None = None,
-                 edgerc: str | None = None,
-                 logger: logging.Logger = None):
-        super().__init__(account_switch_key=account_switch_key, section=section, edgerc=edgerc)
+    def __init__(self, args, logger: logging.Logger = None):
+        super().__init__(args, logger)
         self.MODULE = f'{self.base_url}/cps/v2'
         self.headers = {'accept': 'application/vnd.akamai.cps.enrollments.v11+json'}
         self._params = super().params
@@ -159,15 +155,12 @@ class Enrollment(AkamaiSession):
 class Deployment(AkamaiSession):
     def __init__(self,
                  enrollment_id: int,
-                 account_switch_key: str | None = None,
-                 section: str | None = None,
-                 edgerc: str | None = None,
+                 args,
                  logger: logging.Logger = None):
-        super().__init__(account_switch_key=account_switch_key, section=section, edgerc=edgerc)
+        super().__init__(args)
         self.MODULE = f'{self.base_url}/cps/v2'
         self.enrollment_id = enrollment_id
         self.headers = {'accept': 'application/vnd.akamai.cps.deployment.v3+json'}
-        self.account_switch_key = account_switch_key if account_switch_key else None
         self._params = super().params
         self.logger = logger
 
@@ -200,15 +193,12 @@ class Deployment(AkamaiSession):
 class Changes(AkamaiSession):
     def __init__(self,
                  enrollment_id: int,
-                 account_switch_key: str | None = None,
-                 section: str | None = None,
-                 edgerc: str | None = None,
+                 args,
                  logger: logging.Logger = None):
-        super().__init__(account_switch_key=account_switch_key, section=section, edgerc=edgerc)
+        super().__init__(args)
         self.MODULE = f'{self.base_url}/cps/v2'
         self.enrollment_id = enrollment_id
         self.headers = {'accept': 'application/vnd.akamai.cps.change-history.v5+json'}
-        self.account_switch_key = account_switch_key if account_switch_key else None
         self._params = super().params
         self.logger = logger
 

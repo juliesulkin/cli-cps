@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import sys
 from configparser import NoSectionError
 from pathlib import Path
@@ -14,18 +13,12 @@ from urllib3.util.retry import Retry
 
 class AkamaiSession:
     def __init__(self,
-                 account_switch_key: str | None = None,
-                 section: str | None = None,
-                 edgerc: str | None = None,
-                 contract_id: int | None = None,
-                 group_id: int | None = None,
-                 logger: logging.Logger = None):
+                 args, logger):
 
-        self.edgerc_file = edgerc if edgerc else EdgeRc(f'{str(Path.home())}/.edgerc')
-        self.account_switch_key = account_switch_key if account_switch_key else None
-        self.contract_id = contract_id if contract_id else None
-        self.group_id = group_id if group_id else None
-        self.section = section if section else 'default'
+        self.edgerc_file = EdgeRc(f'{str(Path(args.edgerc))}') if args.edgerc else EdgeRc(f'{str(Path.home())}/.edgerc')
+        self.account_switch_key = args.account_switch_key if args.account_switch_key else None
+        self.contract_id = args.contract if args.contract else None
+        self.section = args.section if args.section else 'default'
         self.logger = logger
         self._params = {}
 
