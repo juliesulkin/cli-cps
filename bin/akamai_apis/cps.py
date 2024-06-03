@@ -40,10 +40,7 @@ class Enrollment(AkamaiSession):
         self.logger.debug(f'Getting details for enrollment-id: {enrollment_id}')
         headers = {'accept': 'application/vnd.akamai.cps.enrollment.v11+json'}
         url = f'{self.MODULE}/enrollments/{enrollment_id}'
-        if self.account_switch_key:
-            url = f'{url}?accountSwitchKey={self.account_switch_key}'
-
-        return self.session.get(url, headers=headers)
+        return self.session.get(url, headers=headers, params=self._params)
 
     async def get_enrollment_async(self, enrollment_id: int, rate_limit: int):
         headers = {'accept': 'application/vnd.akamai.cps.enrollment.v11+json'}
@@ -53,7 +50,7 @@ class Enrollment(AkamaiSession):
 
         async with asyncio.Semaphore(rate_limit):
             # loop = asyncio.get_running_loop()
-            resp = await asyncio.to_thread(self.session.get, url, headers=headers)
+            resp = await asyncio.to_thread(self.session.get, url, headers=headers, params=self._params)
             try:
                 if resp.ok:
                     return await asyncio.to_thread(resp.json)
@@ -75,12 +72,11 @@ class Enrollment(AkamaiSession):
         headers = {'accept: application/vnd.akamai.cps.enrollment-status.v1+json',
                    'content-type: application/vnd.akamai.cps.enrollment.v12+json'}
 
-        url = f'{self.MODULE}/enrollments?contractId={contract_id}'
+        if contract_id:
+            self._params['contractId'] = contract_id
+        url = f'{self.MODULE}/enrollments'
 
-        if self.account_switch_key:
-            url = f'{url}?accountSwitchKey={self.account_switch_key}'
-
-        resp = self.session.post(url, data=payload, headers=headers)
+        resp = self.session.post(url, data=payload, headers=headers, params=self._params)
         return resp
 
     def list_enrollment(self, contract_id: str | None = None):
@@ -104,12 +100,13 @@ class Enrollment(AkamaiSession):
         headers = {'Content-Type': 'application/vnd.akamai.cps.enrollment.v11+json',
                    'Accept': 'application/vnd.akamai.cps.enrollment-status.v1+json'
                    }
-        url = f'{self.MODULE}/enrollments/{enrollment_id}?allow-cancel-pending-changes=true'
+        url = f'{self.MODULE}/enrollments/{enrollment_id}'
+
+        self._params['allow-cancel-pending-changes'] = 'true'
         if renewal:
-            url = f'{url}&force-renewal=true'
-        if self.account_switch_key:
-            url = f'{url}&accountSwitchKey={self.account_switch_key}'
-        resp = self.session.put(url, data=payload, headers=headers)
+            self.params['force-renewal'] = 'true'
+
+        resp = self.session.put(url, data=payload, headers=headers, params=self._params)
         return resp
 
     def remove_enrollment(self, enrollment_id: int):
@@ -118,9 +115,7 @@ class Enrollment(AkamaiSession):
         """
         headers = {'Accept': 'application/vnd.akamai.cps.enrollment-status.v1+json'}
         url = f'{self.MODULE}/enrollments/{enrollment_id}'
-        if self.account_switch_key:
-            url = f'{url}?accountSwitchKey={self.account_switch_key}'
-        resp = self.session.delete(url, headers=headers)
+        resp = self.session.delete(url, headers=headers, params=self._params)
         return resp
 
     def get_dv_history(self, enrollment_id: int):
@@ -146,9 +141,7 @@ class Enrollment(AkamaiSession):
         """
         headers = {'Accept': 'application/vnd.akamai.cps.change-id.v1+json'}
         url = f'{self.MODULE}/enrollments/{enrollment_id}/changes/{change_id}'
-        if self.account_switch_key:
-            url = f'{url}?accountSwitchKey={self.account_switch_key}'
-        resp = self.session.delete(url, headers=headers)
+        resp = self.session.delete(url, headers=headers, params=self._params)
         return resp
 
 
@@ -169,8 +162,7 @@ class Deployment(AkamaiSession):
         Lists the deployments for an enrollment.
         """
         url = f'{self.MODULE}/enrollments/{self.enrollment_id}/deployments'
-        url = f'{url}?accountSwitchKey={self.account_switch_key}' if self.account_switch_key else url
-        resp = self.session.get(url, headers=self.headers)
+        resp = self.session.get(url, headers=self.headers, params=self._params)
         return resp
 
     def get_product_deployement(self):
@@ -178,15 +170,13 @@ class Deployment(AkamaiSession):
         Gets the enrollments deployed on the production network.
         """
         url = f'{self.MODULE}/enrollments/{self.enrollment_id}/deployments/production'
-        url = f'{url}?accountSwitchKey={self.account_switch_key}' if self.account_switch_key else url
-        return self.session.get(url, headers=self.headers)
+        return self.session.get(url, headers=self.headers, params=self._params)
 
     def get_staging_deployement(self):
         """
         Gets the enrollments deployed on the staging network.
         """
         url = f'{self.MODULE}/enrollments/{self.enrollment_id}/deployments/staging'
-        url = f'{url}?accountSwitchKey={self.account_switch_key}' if self.account_switch_key else url
         return self.session.get(url, params=self._params, headers=self.headers)
 
 
@@ -224,7 +214,7 @@ class Changes(AkamaiSession):
         """
         headers = {'accept': 'application/vnd.akamai.cps.change-id.v1+json'}
         url = f'{self.MODULE}/enrollments/{self.enrollment_id}/changes/{change_id}'
-        return self.session.delete(url,  headers=headers)
+        return self.session.delete(url,  headers=headers, params=self._params)
 
     def get_change(self, change_id: int, allowedInputTypeParam):
         """
@@ -243,7 +233,7 @@ class Changes(AkamaiSession):
                    'content-type: application/vnd.akamai.cps.certificate-and-trust-chain.v2+json'}
         url = f'{self.MODULE}/enrollments/{self.enrollment_id}/changes/{change_id}'
         url = f'{url}/input/update/{allowedInputTypeParam}'
-        return self.session.post(url, headers=headers)
+        return self.session.post(url, headers=headers, params=self._params)
 
     def get_staging_deployement(self, change_id):
         """
