@@ -2,13 +2,26 @@ from __future__ import annotations
 
 import concurrent.futures
 import json
+import logging
 import re
 import time
 from pathlib import Path
 from time import perf_counter
 
+import requests
+import utils.emojis as emoji
 from akamai_apis import cps
 from tabulate import tabulate
+
+
+class Utility():
+    def __init__(self, logger: logging.Logger):
+        self.logger = logger
+        self.hostnames = []
+        self.waiting = f'{emoji.clock} waiting'
+        self.s = requests.Session()
+        self.max_column_width = 20
+        self.column_width = 30
 
 
 def call_api(logger, cps: cps.Enrollment, chunk: list, contract_id: str | None = None):

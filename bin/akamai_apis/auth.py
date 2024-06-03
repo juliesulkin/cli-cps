@@ -17,6 +17,7 @@ class AkamaiSession:
                  account_switch_key: str | None = None,
                  section: str | None = None,
                  edgerc: str | None = None,
+                 cookies: str | None = None,
                  contract_id: int | None = None,
                  group_id: int | None = None,
                  logger: logging.Logger = None):
@@ -26,6 +27,7 @@ class AkamaiSession:
         self.contract_id = contract_id if contract_id else None
         self.group_id = group_id if group_id else None
         self.section = section if section else 'default'
+        self.cookies = self.update_acc_cookie(cookies)
         self.logger = logger
 
         try:
@@ -47,10 +49,12 @@ class AkamaiSession:
 
     @property
     def params(self) -> dict:
-        return {'accountSwitchKey': self.account_switch_key} if self.account_switch_key else {}
+        self._params.update({'accountSwitchKey': self.account_switch_key}) if self.account_switch_key else {}
+        return self._params
 
-    def update_account_key(self, account_key: str) -> None:
-        self.account_switch_key = account_key
+    @params.setter
+    def params(self, new_dict):
+        self._params.update(new_dict)
 
 
 if __name__ == '__main__':

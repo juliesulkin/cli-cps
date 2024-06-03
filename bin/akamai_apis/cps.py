@@ -10,6 +10,16 @@ from akamai_apis import headers
 from akamai_apis.auth import AkamaiSession
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
+from utils import utility
+
+logger = logging.getLogger(__name__)
+
+
+class Cps(AkamaiSession):
+
+    def __init__(self, logger: logging.Logger, args):
+        super().__init__(args)
+        utility()
 
 
 class Enrollment(AkamaiSession):
