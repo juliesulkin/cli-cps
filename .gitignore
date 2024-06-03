@@ -115,3 +115,5 @@ audit
 *.json
 *.yaml
 logs
+config
+*.json
