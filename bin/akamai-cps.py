@@ -34,7 +34,13 @@ if __name__ == '__main__':
     console.print()
 
     if args.command == 'list':
-        util_cps.list_enrollment(cps_api, args, logger)
+        enrollments = util_cps.list_enrollment(cps_api, args, logger)
+        if args.show_expiration:
+            logger.warning('Fetching list with production expiration dates. Please wait...')
+        util.show_enrollments_table(logger, args, enrollments)
+        if args.json:
+            json_object = {'enrollments': enrollments}
+            util.write_json(logger, 'setup/enrollments.json', json_object)
 
     if args.command == 'retrieve-enrollment':
         util_cps.retrieve_enrollment(cps_api, args, logger)
