@@ -2,14 +2,20 @@ from __future__ import annotations
 
 import json
 import logging
+import platform
 import re
+import subprocess
 import time
 from pathlib import Path
 
 import requests
-import utils.emojis as emoji
+import yaml
 from akamai_apis import cps
+from rich.console import Console
 from tabulate import tabulate
+from utils import emojis as emoji
+
+console = Console(stderr=True)
 
 
 class Utility():
@@ -65,6 +71,10 @@ class Utility():
         for i in range(0, len(lst), chunk_size):
             yield lst[i:i + chunk_size]
 
+    def open_excel_application(self, filepath: str, show: bool | None = True) -> None:
+        if platform.system() == 'Darwin' and show is True:
+            subprocess.check_call(['open', '-a', 'Microsoft Excel', filepath])
+
     def load_json(self, logger, filepath: str) -> dict:
         with open(filepath) as user_file:
             file_contents = user_file.read()
@@ -74,12 +84,23 @@ class Utility():
         content_json = json.dumps(content_str, indent=2)
         return content_json
 
-    def write_json(self, logger, filepath: str, json_object: dict) -> None:
+    def write_json(self, lg, filepath: str, json_object: dict) -> None:
         with open(filepath, 'w') as f:
             json.dump(dict(json_object), f, indent=4)
         filepath = Path(f'{filepath}').absolute()
         print()
-        logger.info(f'JSON file is saved locally at {filepath}')
+        msg = f'JSON file is saved locally at {filepath}'
+        lg.console_header(console, msg, emoji.pass_green)
+
+    def write_yaml(self, lg, filepath: str, json_object: dict) -> None:
+        with open(filepath, 'w') as f:
+            yaml.dump(json_object, f, default_flow_style=False, indent=4)
+
+        print()
+        with open(filepath) as f:
+            print(f.read())
+        msg = f'YAML file is saved locally at {filepath}'
+        lg.console_header(console, msg, emoji.pass_green)
 
     def found_duplicate_cn(self, logger, enrollment: dict, common_name: str) -> bool:
         found = False
@@ -144,17 +165,15 @@ class Utility():
         print(tabulate(sorted_output, headers=headers, tablefmt='psql'))
         logger.warning('** means enrollment has existing pending changes')
 
+    def format_enrollments_table(self, logger, enrollment: list, show_expiration: bool | None = False):
+        enrollment_id = f'*{enrollment["id"]}*' if len(enrollment['pendingChanges']) != 0 else enrollment['id']
+        san_count = len(enrollment['csr']['sans']) if len(enrollment['csr']['sans']) > 0 else 1
+        common_name = f'{enrollment["csr"]["cn"]} ({san_count})'
+        certificate_type = f'{enrollment["validationType"]} {enrollment["certificateType"]}'
+        in_progress = '*Yes*' if len(enrollment['pendingChanges']) != 0 else ' No'
+        change_management = 'Yes' if enrollment['changeManagement'] else 'No'
+        slot = (','.join([str(item) for item in enrollment['assignedSlots']])
+                if (len(enrollment['assignedSlots']) > 0) else '[dim] no slot assigned')
+        sni = 'Yes' if enrollment['networkConfiguration']['sniOnly'] else 'No'
 
-def format_enrollments_table(logger, enrollment: list, show_expiration: bool | None = False):
-
-    enrollment_id = f'*{enrollment["id"]}*' if len(enrollment['pendingChanges']) != 0 else enrollment['id']
-    san_count = len(enrollment['csr']['sans']) if len(enrollment['csr']['sans']) > 0 else 1
-    common_name = f'{enrollment["csr"]["cn"]} ({san_count})'
-    certificate_type = f'{enrollment["validationType"]} {enrollment["certificateType"]}'
-    in_progress = '*Yes*' if len(enrollment['pendingChanges']) != 0 else ' No'
-    change_management = 'Yes' if enrollment['changeManagement'] else 'No'
-    slot = (','.join([str(item) for item in enrollment['assignedSlots']])
-            if (len(enrollment['assignedSlots']) > 0) else '[dim] no slot assigned')
-    sni = 'Yes' if enrollment['networkConfiguration']['sniOnly'] else 'No'
-
-    return enrollment_id, common_name, certificate_type, in_progress, change_management, slot, sni
+        return enrollment_id, common_name, certificate_type, in_progress, change_management, slot, sni

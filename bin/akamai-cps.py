@@ -14,18 +14,22 @@ from utils.utility import Utility
 console = Console(stderr=True)
 
 
-def build_class_objects(logger, args, cps: cps):
+def build_class_objects(args, logger, cps: cps.Enrollment):
     idm = IdentityAccessManagement(args, logger)
     account_name = idm()
-    cps = cps.Enrollment(args, logger)
     util = Utility(logger)
-    return (account_name, cps, util)
+    cps_enrollment = cps.Enrollment(args, logger)
+    cps_change = cps.Changes(args, logger)
+    cps_deploy = cps.Deployment(args, logger)
+
+    return (account_name, util, cps_enrollment, cps_change, cps_deploy)
 
 
 if __name__ == '__main__':
     args = Parser.get_args(args=None if sys.argv[1:] else ['--help'])
     logger = lg.setup_logger(args)
-    account_name, cps_api, util = build_class_objects(logger, args, cps)
+    (account_name, util,
+     cps_enrollment, cps_change, cps_deploy) = build_class_objects(args, logger, cps)
 
     header_msg = f'\nAccount: {account_name}\n'
     header_title = f'CPS CLI: [i]{args.command}[/i]'
@@ -33,28 +37,31 @@ if __name__ == '__main__':
     console.print()
 
     if args.command == 'list':
-        enrollments = util_cps.list_enrollment(cps_api, args, logger)
+        enrollments = util_cps.list_enrollment(cps_enrollment, util, args, logger)
         if args.show_expiration:
             logger.warning('Fetching list with production expiration dates. Please wait...')
-        util.show_enrollments_table(logger, args, enrollments)
+
         if args.json:
             json_object = {'enrollments': enrollments}
             util.write_json(logger, 'setup/enrollments.json', json_object)
 
     if args.command == 'retrieve-enrollment':
-        util_cps.retrieve_enrollment(cps_api, args, logger)
+        util_cps.retrieve_enrollment(cps_enrollment, util, args, logger)
 
     if args.command == 'update':
-        util_cps.update_enrollment(cps_api, args, logger)
+        util_cps.update_enrollment(cps_enrollment, args, logger)
 
     if args.command == 'cancel':
-        util_cps.cancel_enrollment(cps_api, args, logger)
+        util_cps.cancel_enrollment(cps_enrollment, args, logger)
 
     if args.command == 'delete':
-        util_cps.delete_enrollment(cps_api, args, logger)
+        util_cps.delete_enrollment(cps_enrollment, args, logger)
 
     if args.command == 'audit':
-        asyncio.run(util_cps.audit(cps_api, args, logger))
+        asyncio.run(util_cps.audit(args, logger, util,
+                                   cps_enrollment,
+                                   cps_change,
+                                   cps_deploy))
 
     if args.command == 'proceed':
         pass

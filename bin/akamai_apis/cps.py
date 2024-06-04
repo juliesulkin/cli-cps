@@ -27,7 +27,12 @@ class Enrollment(AkamaiSession):
         self.MODULE = f'{self.base_url}/cps/v2'
         self.headers = {'accept': 'application/vnd.akamai.cps.enrollments.v11+json'}
         self._params = super().params
+        self._enrollment_id = None
         self.logger = logger
+
+    @property
+    def enrollment_id(self) -> int:
+        return self._enrollment_id
 
     def get_contract(self):
         url = f'{self.base_url}/contract-api/v1/contracts/identifiers?depth=TOP'
@@ -40,21 +45,23 @@ class Enrollment(AkamaiSession):
         self.logger.debug(f'Getting details for enrollment-id: {enrollment_id}')
         headers = {'accept': 'application/vnd.akamai.cps.enrollment.v11+json'}
         url = f'{self.MODULE}/enrollments/{enrollment_id}'
-        return self.session.get(url, headers=headers, params=self._params)
+        resp = self.session.get(url, headers=headers, params=self._params)
+        if resp.ok:
+            self.enrollment_id = enrollment_id
+        return resp
 
     async def get_enrollment_async(self, enrollment_id: int, rate_limit: int):
         headers = {'accept': 'application/vnd.akamai.cps.enrollment.v11+json'}
         url = f'{self.MODULE}/enrollments/{enrollment_id}'
-        if self.account_switch_key:
-            url = f'{url}?accountSwitchKey={self.account_switch_key}'
-
         async with asyncio.Semaphore(rate_limit):
             # loop = asyncio.get_running_loop()
             resp = await asyncio.to_thread(self.session.get, url, headers=headers, params=self._params)
             try:
-                if resp.ok:
+                if not resp.ok:
+                    time.sleep(40)
+                else:
                     return await asyncio.to_thread(resp.json)
-                time.sleep(40)
+
             finally:
                 resp.close()
 
@@ -145,17 +152,22 @@ class Enrollment(AkamaiSession):
         return resp
 
 
-class Deployment(AkamaiSession):
-    def __init__(self,
-                 enrollment_id: int,
-                 args,
-                 logger: logging.Logger = None):
-        super().__init__(args)
+class Deployment(Enrollment):
+    def __init__(self, args, logger: logging.Logger = None, enrollment_id: int | None = None):
+        super().__init__(args, logger)
         self.MODULE = f'{self.base_url}/cps/v2'
-        self.enrollment_id = enrollment_id
-        self.headers = {'accept': 'application/vnd.akamai.cps.deployment.v3+json'}
+        self.headers = {'accept': 'application/vnd.akamai.cps.deployment.v8+json'}
         self._params = super().params
         self.logger = logger
+        self._enrollment_id = enrollment_id
+
+    @property
+    def enrollment_id(self) -> int:
+        return self._enrollment_id
+
+    @enrollment_id.setter
+    def enrollment_id(self, value: int):
+        self._enrollment_id = value
 
     def list_deployments(self):
         """
@@ -180,25 +192,28 @@ class Deployment(AkamaiSession):
         return self.session.get(url, params=self._params, headers=self.headers)
 
 
-class Changes(AkamaiSession):
-    def __init__(self,
-                 enrollment_id: int,
-                 args,
-                 logger: logging.Logger = None):
-        super().__init__(args)
+class Changes(Enrollment):
+    def __init__(self, args, logger: logging.Logger = None, enrollment_id: int | None = None):
+        super().__init__(args, logger)
         self.MODULE = f'{self.base_url}/cps/v2'
-        self.enrollment_id = enrollment_id
-        self.headers = {'accept': 'application/vnd.akamai.cps.change-history.v5+json'}
         self._params = super().params
-        self.logger = logger
+        self._enrollment_id = enrollment_id
+
+    @property
+    def enrollment_id(self) -> int:
+        return self._enrollment_id
+
+    @enrollment_id.setter
+    def enrollment_id(self, value: int):
+        self._enrollment_id = value
 
     def get_change_history(self):
         """
         Change history of an enrollment.
         """
+        headers = {'accept': 'application/vnd.akamai.cps.change-history.v5+json'}
         url = f'{self.MODULE}/enrollments/{self.enrollment_id}/history/changes'
-        resp = self.session.get(url, params=self._params, headers=self.headers)
-        return resp
+        return self.session.get(url, headers=headers, params=self._params)
 
     def get_change_status(self, change_id: int):
         """
@@ -206,7 +221,7 @@ class Changes(AkamaiSession):
         """
         headers = {'accept': 'application/vnd.akamai.cps.change.v2+json'}
         url = f'{self.MODULE}/enrollments/{self.enrollment_id}/changes/{change_id}'
-        return self.session.get(url, params=self._params, headers=headers)
+        return self.session.get(url, headers=headers, params=self._params)
 
     def cancel_change_status(self, change_id: int):
         """
@@ -223,7 +238,7 @@ class Changes(AkamaiSession):
         headers = {'accept': 'application/vnd.akamai.cps.change-management-info.v1+json'}
         url = f'{self.MODULE}/enrollments/{self.enrollment_id}/changes/{change_id}'
         url = f'{url}/input/info/{allowedInputTypeParam}'
-        return self.session.get(url, params=self._params, headers=headers)
+        return self.session.get(url, headers=headers, params=self._params)
 
     def update_change(self, change_id: int, allowedInputTypeParam):
         """
@@ -237,11 +252,12 @@ class Changes(AkamaiSession):
 
     def get_staging_deployement(self, change_id):
         """
-        Gets the current deployment schedule settings describing when a change deploys to the network.
+        Gets the current deployment schedule settings describing
+        when a change deploys to the network.
         """
         headers = {'accept': 'application/vnd.akamai.cps.deployment-schedule.v1+json'}
         url = f'{self.MODULE}/enrollments/{self.enrollment_id}/changes/{change_id}/deployment-schedule'
-        return self.session.get(url, params=self._params, headers=headers)
+        return self.session.get(url, headers=headers, params=self._params)
 
 
 class Certificate:
