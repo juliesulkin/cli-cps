@@ -9,15 +9,16 @@ from concurrent.futures import as_completed
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import yaml
+from akamai_apis.cps import Changes
 from akamai_apis.cps import Deployment
 from akamai_apis.cps import Enrollment
 from rich import print_json
 from rich.console import Console
 from rich.table import Table
+from tabulate import tabulate
 from utils import cli_logging as lg
 from utils import emojis
-from utils import utility as util
+from utils.utility import Utility
 from xlsxwriter.workbook import Workbook
 # from time import perf_counter
 
@@ -25,12 +26,11 @@ from xlsxwriter.workbook import Workbook
 console = Console(stderr=True)
 
 
-def list_enrollment(cps: Enrollment, args, logger) -> None:
+def list_enrollment(cps: Enrollment, util, args, logger) -> None:
     enrollments = []
     resp = cps.list_enrollment(args.contract)
     if not resp.ok:
         logger.error(resp.text)
-        exit(1)
     else:
         enrollments = resp.json()['enrollments']
 
@@ -77,7 +77,7 @@ def list_enrollment(cps: Enrollment, args, logger) -> None:
     return enrollments
 
 
-def retrieve_enrollment(cps: Enrollment, args, logger) -> None:
+def retrieve_enrollment(cps: Enrollment, util: Utility, args, logger) -> None:
     if not args.cn and not args.enrollment_id:
         msg = 'Common Name (--cn) or enrollment-id (--enrollment-id) is mandatory'
         sys.exit(logger.error(msg))
@@ -102,13 +102,18 @@ def retrieve_enrollment(cps: Enrollment, args, logger) -> None:
     else:
         enrollment_id = args.enrollment_id if args.enrollment_id else None
         if args.cn:
-            enrollments = list_enrollment(cps, args, logger)
-            found = [enrl for enrl in enrollments if enrl['csr']['cn'] == args.cn or 'sans' in enrl and args.cn in enrl['csr']['sans']]
+            cn_resp = cps.list_enrollment()
+            if cn_resp.ok:
+                enrollments = cn_resp.json()['enrollments']
+                found = [enrl for enrl in enrollments if enrl['csr']['cn'] == args.cn or 'sans' in enrl and args.cn in enrl['csr']['sans']]
 
-            if len(found) == 1:
-                enrollment_id = found[0]['location'].split('/')[-1]
-            elif len(found) > 1:
-                sys.exit(logger.warning('More than 1 enrollment found for same CN. Please use --enrollment-id as input'))
+                if len(found) == 1:
+                    enrollment_id = found[0]['location'].split('/')[-1]
+                    lg.console_header(console, f'Found enrollment-id {enrollment_id}', emojis.gem)
+                    console.print()
+
+                elif len(found) > 1:
+                    sys.exit(logger.warning('More than 1 enrollment found for same CN. Please use --enrollment-id as input'))
 
     if backward:
         found = [enrl for enrl in enrollments if enrl['cn'] == args.cn or 'sans' in enrl and args.cn in enrl['sans']]
@@ -135,24 +140,22 @@ def retrieve_enrollment(cps: Enrollment, args, logger) -> None:
 
         else:
             result = resp.json()
-            if args.json:
-                print_json(data=result)
-                util.write_json(logger, f'enrollment_{enrollment_id}.json', result)
-
-            if args.yaml:
-                yaml_file = f'enrollment_{enrollment_id}.yaml'
-                with open(yaml_file, 'w') as f:
-                    yaml.dump(result, f, default_flow_style=False, indent=4)
-
-                print()
-                with open(yaml_file) as f:
-                    print(f.read())
+            lg.console_header(console, f'Found enrollment-id {enrollment_id}', emojis.gem)
+            console.print()
 
             if not args.json and not args.yaml:
                 print_json(data=result)
+                exit(-1)
+
+            if args.json:
+                print_json(data=result)
+                util.write_json(lg, f'enrollment_{enrollment_id}.json', result)
+
+            if args.yaml:
+                util.write_yaml(lg, f'enrollment_{enrollment_id}.yaml', result)
 
 
-def update_enrollment(cps: Enrollment, args, logger) -> None:
+def update_enrollment(cps: Enrollment, util: Utility, args, logger) -> None:
     enrollment_id = args.enrollment_id
     resp = cps.get_enrollment(enrollment_id)
     if not resp.ok:
@@ -244,52 +247,137 @@ def create_output_file(args) -> str:
     return output_file
 
 
-def build_csv_rows(logger, data_json: dict) -> list:
+def extract_cert_detail(logger, contract_id: str, enrl: dict) -> list:
+
+    detail = []
+    try:
+        enrollment_id = enrl['id']
+    except TypeError:
+        enrollment_id = 0
+        logger.critical('enrollment-id fetch error')
+
+    cn = enrl['csr']['cn']
+    san = enrl['csr'].get('sans', [])
+
+    total_san = len(san)
+    cn = cn if total_san == 0 else f'{cn} [{total_san}]'
+    san_str = ' '.join(f"'{hostname}'" for hostname in san)
+    detail.extend([contract_id, enrollment_id, cn, san_str])
+
+    pending = enrl['pendingChanges']
+    if len(pending) <= 0:
+        status = 'ACTIVE'
+    else:
+        status = 'IN-PROGRESS'
+    detail.extend([status])
+
+    val_type = enrl['validationType']
+    cert_type = enrl['certificateType']
+    change_mgmt = 'Yes' if enrl['changeManagement'] else ' '
+    detail.extend([val_type, cert_type, change_mgmt])
+
+    sniOnly = 'Yes' if enrl['networkConfiguration']['sniOnly'] else ' '
+    secureNetwork = enrl['networkConfiguration']['secureNetwork']
+    preferredCiphers = enrl['networkConfiguration']['preferredCiphers']
+    mustHaveCiphers = enrl['networkConfiguration']['mustHaveCiphers']
+    tls = enrl['networkConfiguration']['disallowedTlsVersions']
+    geo = enrl['networkConfiguration']['geography']
+    country = enrl['csr'].get('c', ' ')
+    state = enrl['csr'].get('st', ' ')
+    org = f"'{enrl['org']['name']}'"
+    ou = enrl['csr'].get('ou', ' ')
+
+    detail.extend([sniOnly, secureNetwork, preferredCiphers,
+                   mustHaveCiphers, tls,
+                   geo, country, state,
+                   org, ou])
+
+    adminContact = enrl['adminContact']
+    admin_fn = adminContact['firstName'].strip()
+    admin_ln = adminContact['lastName'].strip()
+    admin_em = adminContact['email']
+    admin_ph = adminContact['phone']
+    admin_dtl = f'{admin_fn} {admin_ln} | {admin_em} | {admin_ph}'
+    techContact = enrl['techContact']
+    tech_fn = techContact['firstName'].strip()
+    tech_ln = techContact['lastName'].strip()
+    tech_em = techContact['email']
+    tech_ph = techContact['phone']
+    tech_dtl = f'{tech_fn} {tech_ln} | {tech_em} | {tech_ph}'
+    detail.extend([admin_dtl, tech_dtl])
+
+    return detail
+
+
+def build_csv_rows(logger,
+                   cps_change: Changes,
+                   cps_deploy: Deployment,
+                   data_json: dict) -> list:
+
     contract_id = data_json['contractId']
     try:
         enrls = data_json['enrollmentId']
     except KeyError:
         print_json(data=data_json)
     rows = []
-
+    console_rows = []
     for i, enrl in enumerate(enrls, 1):
-        enrollment_id = enrl['id']
-        cn = enrl['csr']['cn']
-        """
-        san = enrl['csr'].get('sans', [])
+        detail = extract_cert_detail(logger, contract_id, enrl)
+        enrollment_id = detail[1]
 
-        adminContact = enrl['adminContact']
-        admin_fn = adminContact['firstName'].strip()
-        admin_ln = adminContact['lastName'].strip()
-        admin_em = adminContact['email']
-        admin_ph = adminContact['phone']
-        admin = f'{admin_fn} {admin_ln} | {admin_em} | {admin_ph}'
+        cps_deploy.enrollment_id = enrollment_id
+        prod_resp = cps_deploy.get_product_deployement()
+        expiry = ' '
+        if prod_resp.ok:
+            expiry = prod_resp.json()['primaryCertificate']['expiry']
+        detail.insert(5, expiry)
+        status = detail[4]
+
+        pending = enrl['pendingChanges']
+        pending_detail = ' '
+        order_id = ' '
+
+        if status == 'IN-PROGRESS':
+            change_id = pending[0]['location'].split('/')[-1]
+            cps_change.enrollment_id = enrollment_id
+            change_resp = cps_change.get_change_status(change_id)
+            if not change_resp.ok:
+                msg = f'Unable to determine change status for enrollment {enrollment_id} '
+                msg = f'{msg} with change Id {change_id}'
+                logger.warning(msg)
+                pending_detail = 'unknown change change status'
+            else:
+                cn = detail[2]
+                val_type = detail[6]
+                if val_type in ['ov', 'ev']:
+                    logger.critical(f'{cn} {val_type}')
+                    pending_detail = change_resp.json().get('statusInfo').get('description', '')
+                    history_resp = cps_change.get_change_history()
+                    if history_resp.ok:
+                        changes = history_resp.json()['changes']
+                        for i, ch in enumerate(changes, 1):
+                            ch_dtl = f"{ch['actionDescription']} - {ch['status']}"
+                            order_id = 0
+                            if ch['status'] == 'incomplete':
+                                cert = ch.get('primaryCertificateOrderDetails', 0)
+                                order_id = cert.get('orderId', 0)
+                                logger.warning(f'{ch_dtl} OrderId: {order_id}')
+                                break
+
+        detail.extend([pending_detail, order_id])
+        rows.append(detail)
+        console_data = detail[:3] + detail[4:10] + [detail[-1]]
+        console_rows.append(console_data)
+
+    return (rows, console_rows)
 
 
-        techContact = enrl['techContact']
-        tech_fn =  techContact['firstName'].strip()
-        tech_ln = techContact['lastName'].strip()
-        tech_em = techContact['email']
-        tech_ph = techContact['phone']
-        tech_dtl = f'{tech_fn} {tech_ln} | {tech_em} | {tech_ph}'
-
-        cert_type = enrl['certificateType']
-        val_type = enrl['validationType']
-        org = enrl['org']['name']
-        sniOnly = enrl['networkConfiguration']['sniOnly']
-        secureNetwork = enrl['networkConfiguration']['secureNetwork']
-        tls = enrl['networkConfiguration']['disallowedTlsVersions']
-        mustHaveCiphers = enrl['networkConfiguration']['mustHaveCiphers']
-        preferredCiphers = enrl['networkConfiguration']['preferredCiphers']
-        """
-        rows.append([contract_id, enrollment_id, cn])
-
-    return rows
-
-
-async def audit(cps: Enrollment, args, logger) -> None:
+async def audit(args, logger, util: Utility,
+                cps: Enrollment,
+                cps_change: Changes,
+                cps_deploy: Deployment) -> None:
     output_file = create_output_file(args)
-    contracts = cps.get_contract().json()
+    contracts = args.contract if args.contract else cps.get_contract().json()
     all_enrl = []
     account_enrollments = []
     for contract_id in contracts:
@@ -307,26 +395,44 @@ async def audit(cps: Enrollment, args, logger) -> None:
                 account_enrollments.append({'contractId': contract_id,
                                             'enrollmentId': all_enrl})
 
+    print()
     if args.json:
         util.write_json(logger, filepath=output_file, json_object={'results': account_enrollments})
         exit(-1)
 
     csv_rows = []
-    for contract in account_enrollments:
-        csv_rows.extend(build_csv_rows(logger, contract))
+    console_csv_rows = []
+    for enrl_in_contract in account_enrollments:
+        output, console_output = build_csv_rows(logger,
+                                                cps_change, cps_deploy,
+                                                enrl_in_contract)
+        csv_rows.extend(output)
+        console_csv_rows.extend(console_output)
+
+    headers = ['contractId', 'enrollment_id', 'CN', 'SAN(S)',
+               'status', 'Expiry', 'Validation', 'Type', 'Test on Staging', 'SNI Only',
+               'Secure Network', 'preferredCiphers', 'mustHaveCiphers', 'disallowedTlsVersions',
+               'Geography', 'Country', 'State',
+               'Organization', 'Organization Unit',
+               'Admin Contact', 'Tech Contact']
+    console_headers = ['contractId', 'enrollment_id', 'CN SAN(S)', 'status', 'Expiry', 'Validation', 'Type',
+                       'Test on Staging', 'SNI Only']
+
+    if args.include_change_details:
+        change_detail_headers = ['Change Status Details', 'OrderId']
+        headers.extend(change_detail_headers)
+        console_headers.append('OrderId')
 
     if not args.xlsx:
         with open(output_file, 'w', newline='') as csvfile:
-            headers = ['contractId', 'enrollment_id', 'cn']
             csvwriter = csv.writer(csvfile)
             csvwriter.writerow(headers)
             csvwriter.writerows(csv_rows)
     else:
         temp_csv = str(output_file).replace('.xlsx', '.csv')
-        logger.critical(temp_csv)
-        logger.critical(output_file)
+        logger.debug(temp_csv)
+        logger.debug(output_file)
         with open(temp_csv, 'w', newline='') as csvfile:
-            headers = ['contractId', 'enrollment_id', 'cn']
             csvwriter = csv.writer(csvfile)
             csvwriter.writerow(headers)
             csvwriter.writerows(csv_rows)
@@ -340,12 +446,17 @@ async def audit(cps: Enrollment, args, logger) -> None:
                 for c, col in enumerate(row):
                     worksheet.write(r, c, col)
         workbook.close()
+        util.open_excel_application(filepath=output_file)
 
         file_path = Path(temp_csv)
         if file_path.exists():
             file_path.unlink()
 
-    logger.critical(f'Done! Output file written here: {output_file}')
+    print(tabulate(console_csv_rows, headers=console_headers, tablefmt='psql'))
+    msg = f'Done! Output file written here: {output_file}'
+
+    lg.console_header(console, msg, emojis.pass_green)
+
 
 if __name__ == '__main__':
     pass

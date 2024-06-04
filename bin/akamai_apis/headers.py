@@ -1,3 +1,4 @@
+# https://techdocs.akamai.com/cps/reference/internal-versioning
 from __future__ import annotations
 
 
