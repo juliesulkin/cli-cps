@@ -325,8 +325,8 @@ def build_csv_rows(logger,
             else:
                 cn = detail[2]
                 val_type = detail[6]
-                logger.critical(f'{cn} {val_type}')
                 if val_type in ['ov', 'ev']:
+                    logger.critical(f'{cn} {val_type}')
                     pending_detail = change_resp.json().get('statusInfo').get('description', '')
                     history_resp = cps_change.get_change_history()
                     if history_resp.ok:
@@ -337,7 +337,7 @@ def build_csv_rows(logger,
                             if ch['status'] == 'incomplete':
                                 cert = ch.get('primaryCertificateOrderDetails', 0)
                                 order_id = cert.get('orderId', 0)
-                                logger.critical(f'{ch_dtl} OrderId: {order_id}')
+                                logger.warning(f'{ch_dtl} OrderId: {order_id}')
                                 break
 
         detail.extend([pending_detail, order_id])
