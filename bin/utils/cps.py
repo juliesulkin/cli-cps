@@ -4,9 +4,13 @@ import csv
 import datetime
 import json
 import sys
+import time
+from concurrent.futures import as_completed
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import yaml
+from akamai_apis.cps import Deployment
 from akamai_apis.cps import Enrollment
 from rich import print_json
 from rich.console import Console
@@ -15,6 +19,7 @@ from utils import cli_logging as lg
 from utils import emojis
 from utils import utility as util
 from xlsxwriter.workbook import Workbook
+# from time import perf_counter
 
 
 console = Console(stderr=True)
@@ -40,11 +45,31 @@ def list_enrollment(cps: Enrollment, args, logger) -> None:
     table.add_column('Test on Staging First')
     table.add_column('Slot')
     table.add_column('SNI')
+    table.add_column('Expiry')
+
+    # get all deployments
+    all_results = {}
+    cps_deployment = Deployment(enrollments[0]['id'], args)
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        chunks = list(util.split_into_chunks(enrollments, 5))
+        future_to_chunk = {}
+        for chunk in chunks:
+            future = executor.submit(util.get_deployment_wrapper, logger, chunk, cps_deployment)
+            future_to_chunk[future] = chunk
+            time.sleep(3)
+
+        for future in as_completed(future_to_chunk):
+            chunk = future_to_chunk[future]
+            try:
+                chunk_result = future.result()
+                all_results.update(chunk_result)  # Combine results from each chunk
+            except Exception as err:
+                logger.error(err)
 
     for enrollment in enrollments:
-        (enrollment_id, common_name, certificate_type,
-         in_progress, change_management, slot, sni) = util.format_enrollments_table(logger, enrollment)
-        table.add_row(str(enrollment_id), common_name, certificate_type, in_progress, change_management, str(slot), sni)
+        enrollment['certificate'] = all_results[enrollment['id']]
+        row_values = util.format_enrollments_table(logger, enrollment, True)
+        table.add_row(*row_values)
     console.print(table)
     console.print('[dim][i]** means enrollment has existing pending changes')
 

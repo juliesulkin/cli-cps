@@ -150,10 +150,10 @@ class Deployment(AkamaiSession):
                  enrollment_id: int,
                  args,
                  logger: logging.Logger = None):
-        super().__init__(args)
+        super().__init__(args, logger)
         self.MODULE = f'{self.base_url}/cps/v2'
         self.enrollment_id = enrollment_id
-        self.headers = {'accept': 'application/vnd.akamai.cps.deployment.v3+json'}
+        self.headers = {'accept': 'application/vnd.akamai.cps.deployment.v8+json'}
         self._params = super().params
         self.logger = logger
 
@@ -165,11 +165,15 @@ class Deployment(AkamaiSession):
         resp = self.session.get(url, headers=self.headers, params=self._params)
         return resp
 
-    def get_product_deployement(self):
+    def get_production_deployment(self, override_enrollment_id=False):
         """
         Gets the enrollments deployed on the production network.
         """
-        url = f'{self.MODULE}/enrollments/{self.enrollment_id}/deployments/production'
+        enrollment_id = self.enrollment_id
+        if override_enrollment_id:
+            enrollment_id = override_enrollment_id
+
+        url = f'{self.MODULE}/enrollments/{enrollment_id}/deployments/production'
         return self.session.get(url, headers=self.headers, params=self._params)
 
     def get_staging_deployement(self):
