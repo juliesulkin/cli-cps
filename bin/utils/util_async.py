@@ -14,7 +14,6 @@ from utils.utility import Utility
 
 
 console = Console(stderr=True)
-
 logger = logging.getLogger(__name__)
 
 
@@ -31,7 +30,7 @@ async def process_chunk(executor, logger, contract: str, count_contract: int,
     error_ids = []
     t0 = perf_counter()
 
-    log_t0 = strftime('%I:%M:%S %p', gmtime(time()))
+    log_t0 = time.strftime('%I:%M:%S %p', time.gmtime(time.time()))
     to_be_processed = len(ids)
     if batch_size < count_contract:
         msg = f'batch {batch_no:>3}: {to_be_processed:>4} requests, started    {log_t0} '
@@ -56,7 +55,7 @@ async def process_chunk(executor, logger, contract: str, count_contract: int,
 
     t1 = perf_counter()
     processed = len(ids) - error
-    log_t1 = strftime('%I:%M:%S %p', gmtime(time()))
+    log_t1 = time.strftime('%I:%M:%S %p', time.gmtime(time.time()))
     msg = f'batch {batch_no:>3}: {processed:>4} requests, [dim]completed  {log_t1}[/dim]'
     elapse_time = str(strftime('%H:%M:%S', gmtime(t1 - t0)))
     ttp = 'total requested time'
