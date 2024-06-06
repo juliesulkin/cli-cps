@@ -16,9 +16,13 @@ class AkamaiSession:
         if args.edgerc is None:
             self.edgerc_file = EdgeRc(f'{str(Path.home())}/.edgerc')
         else:
-            self.edgerc_file = EdgeRc(f'{str(Path(args.edgerc))}') if args.edgerc else EdgeRc(f'{str(Path.home())}/.edgerc')
+            self.edgerc_file = EdgeRc(f'{str(Path(args.edgerc))}')
         self.account_switch_key = args.account_switch_key if args.account_switch_key else None
-        self.contract_id = args.contract if args.contract else None
+        try:
+            self.contract_id = args.contract if args.contract else 0
+        except Exception:
+            self.contract_id = 0
+
         self.section = args.section if args.section else 'default'
         self.logger = logger
         self._params = {}

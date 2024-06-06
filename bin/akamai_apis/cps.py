@@ -2,17 +2,25 @@
 # https://techdocs.akamai.com/cps/reference/api-summary
 from __future__ import annotations
 
-import asyncio
 import logging
-import time
 
 from akamai_apis import headers
 from akamai_apis.auth import AkamaiSession
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
+from ratelimit import limits
+from ratelimit import sleep_and_retry
+from rich.console import Console
 
+console = Console(stderr=True)
 
 logger = logging.getLogger(__name__)
+# https://techdocs.akamai.com/cps/reference/rate-limiting
+# Maximum limit of 100 requests per every 2 minutes, per account.
+# Short-term rate limit of 20 requests per 2 seconds, per account.
+
+TIME_PERIOD = 2
+MAX_CALLS = 20
 
 
 class Cps(AkamaiSession):
@@ -29,6 +37,7 @@ class Enrollment(AkamaiSession):
         self._params = super().params
         self._enrollment_id = None
         self.logger = logger
+        self._url_endpoint = None
 
     @property
     def enrollment_id(self) -> int:
@@ -38,37 +47,36 @@ class Enrollment(AkamaiSession):
         url = f'{self.base_url}/contract-api/v1/contracts/identifiers?depth=TOP'
         return self.session.get(url, params=self._params)
 
+    @sleep_and_retry
+    @limits(calls=MAX_CALLS, period=TIME_PERIOD)
     def get_enrollment(self, enrollment_id: int):
         """
         Gets an enrollment.
         """
-        self.logger.debug(f'Getting details for enrollment-id: {enrollment_id}')
         headers = {'accept': 'application/vnd.akamai.cps.enrollment.v11+json'}
         url = f'{self.MODULE}/enrollments/{enrollment_id}'
+
+        if 'contractId' in self._params:
+            del self._params['contractId']
+
         resp = self.session.get(url, headers=headers, params=self._params)
-        if resp.ok:
-            self.enrollment_id = enrollment_id
+        if not resp.ok:
+            self.logger.debug(f'{enrollment_id:<10} {resp.url}')
+            return resp, enrollment_id
+        else:
+            self._enrollment_id = enrollment_id
+            return resp
+
+    def list_enrollment(self, contract_id: str | None = None):
+        """
+        A list of the names of each enrollment.
+        """
+        if contract_id:
+            self._params['contractId'] = contract_id
+        url = f'{self.MODULE}/enrollments'
+        resp = self.session.get(url, params=self._params, headers=self.headers)
+        self.logger.debug(resp.url)
         return resp
-
-    async def get_enrollment_async(self, enrollment_id: int, rate_limit: int):
-        headers = {'accept': 'application/vnd.akamai.cps.enrollment.v11+json'}
-        url = f'{self.MODULE}/enrollments/{enrollment_id}'
-        async with asyncio.Semaphore(rate_limit):
-            # loop = asyncio.get_running_loop()
-            resp = await asyncio.to_thread(self.session.get, url, headers=headers, params=self._params)
-            try:
-                if not resp.ok:
-                    time.sleep(40)
-                else:
-                    return await asyncio.to_thread(resp.json)
-
-            finally:
-                resp.close()
-
-    async def fetch_all(self, enrollment_ids: list, rate_limit: int | None = 5):
-        tasks = [self.get_enrollment_async(enrollment_id, rate_limit) for enrollment_id in enrollment_ids]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        return results
 
     def create_enrollment(self, contract_id: str, payload: dict):
         """
@@ -84,17 +92,6 @@ class Enrollment(AkamaiSession):
         url = f'{self.MODULE}/enrollments'
 
         resp = self.session.post(url, data=payload, headers=headers, params=self._params)
-        return resp
-
-    def list_enrollment(self, contract_id: str | None = None):
-        """
-        A list of the names of each enrollment.
-        """
-        if contract_id:
-            self._params['contractId'] = contract_id
-        url = f'{self.MODULE}/enrollments'
-        resp = self.session.get(url, params=self._params, headers=self.headers)
-        self.logger.debug(resp.url)
         return resp
 
     def update_enrollment(self, enrollment_id: int, payload: dict,
@@ -197,11 +194,14 @@ class Deployment(Enrollment):
 
 
 class Changes(Enrollment):
+    custom_headers = headers.category
+
     def __init__(self, args, logger: logging.Logger = None, enrollment_id: int | None = None):
         super().__init__(args, logger)
         self.MODULE = f'{self.base_url}/cps/v2'
         self._params = super().params
         self._enrollment_id = enrollment_id
+        self._url_endpoint = None
 
     @property
     def enrollment_id(self) -> int:
@@ -210,6 +210,14 @@ class Changes(Enrollment):
     @enrollment_id.setter
     def enrollment_id(self, value: int):
         self._enrollment_id = value
+
+    @property
+    def url_endpoint(self) -> str:
+        return self._url_endpoint
+
+    @url_endpoint.setter
+    def url_endpoint(self, value: str):
+        self._url_endpoint = value
 
     def get_change_history(self):
         """
@@ -235,26 +243,44 @@ class Changes(Enrollment):
         url = f'{self.MODULE}/enrollments/{self.enrollment_id}/changes/{change_id}'
         return self.session.delete(url,  headers=headers, params=self._params)
 
-    def get_change(self, change_id: int, allowedInputTypeParam):
+    def get_change(self, change_type: str, change_id: int | None = 0):
         """
         Get detailed information of a pending change
+        Currently supported values include
+           change-management-info,
+           lets-encrypt-challenges,
+           post-verification-warnings,
+           pre-verification-warnings,
+           third-party-csr.
         """
-        headers = {'accept': 'application/vnd.akamai.cps.change-management-info.v1+json'}
-        url = f'{self.MODULE}/enrollments/{self.enrollment_id}/changes/{change_id}'
-        url = f'{url}/input/info/{allowedInputTypeParam}'
-        return self.session.get(url, headers=headers, params=self._params)
 
-    def update_change(self, change_id: int, allowedInputTypeParam):
+        custom_header = [item[change_type]['info'] for item in self.custom_headers
+                         if change_type in item][0]
+        url = f'{self.base_url}{self._url_endpoint}'
+        logger.critical(url)
+
+        return self.session.get(url, headers=custom_header, params=self._params)
+
+    def update_change(self, change_type: str, hash_value: str, change_id: int | None = 0):
         """
         Updates a pending change.
+        Currently supported values include
+           change-management-ack,
+           lets-encrypt-challenges-completed,
+           post-verification-warnings-ack,
+           pre-verification-warnings-ack,
+           third-party-cert-and-trust-chain
         """
-        headers = {'accept: application/vnd.akamai.cps.change-id.v1+json',
-                   'content-type: application/vnd.akamai.cps.certificate-and-trust-chain.v2+json'}
-        url = f'{self.MODULE}/enrollments/{self.enrollment_id}/changes/{change_id}'
-        url = f'{url}/input/update/{allowedInputTypeParam}'
-        return self.session.post(url, headers=headers, params=self._params)
+        custom_header = [item[change_type]['update'] for item in self.custom_headers
+                         if change_type in item][0]
+        url = f'{self.base_url}{self._url_endpoint}xxx'
 
-    def get_staging_deployement(self, change_id):
+        payload = {'acknowledgement': 'acknowledge'}
+        payload['hash'] = hash_value
+
+        return self.session.post(url, headers=custom_header, params=self._params)
+
+    def get_deployement_schedule(self, change_id):
         """
         Gets the current deployment schedule settings describing
         when a change deploys to the network.

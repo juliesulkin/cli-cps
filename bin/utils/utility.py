@@ -8,13 +8,13 @@ import subprocess
 import time
 from pathlib import Path
 
-import requests
 import yaml
 from akamai_apis import cps
 from rich.console import Console
 from tabulate import tabulate
-from utils import emojis as emoji
-# from akamai_apis.cps import Deployment
+from utils import cli_logging as lg
+from utils import emojis
+
 
 console = Console(stderr=True)
 
@@ -23,8 +23,7 @@ class Utility():
     def __init__(self, logger: logging.Logger):
         self.logger = logger
         self.hostnames = []
-        self.waiting = f'{emoji.clock} waiting'
-        self.s = requests.Session()
+        self.waiting = f'{emojis.clock} waiting'
         self.max_column_width = 20
         self.column_width = 30
 
@@ -68,9 +67,9 @@ class Utility():
             api_result.append(resp.json())
         return api_result
 
-    def split_into_chunks(self, lst, chunk_size):
-        for i in range(0, len(lst), chunk_size):
-            yield lst[i:i + chunk_size]
+    def split_into_chunks(self, lst, size: int):
+        for i in range(0, len(lst), size):
+            yield lst[i:i + size]
 
     def open_excel_application(self, filepath: str, show: bool | None = True) -> None:
         if platform.system() == 'Darwin' and show is True:
@@ -85,13 +84,10 @@ class Utility():
         content_json = json.dumps(content_str, indent=2)
         return content_json
 
-    def write_json(self, lg, filepath: str, json_object: dict) -> None:
+    def write_json(self, lg: lg, console, filepath: str, json_object: dict) -> None:
         with open(filepath, 'w') as f:
             json.dump(dict(json_object), f, indent=4)
         filepath = Path(f'{filepath}').absolute()
-        print()
-        msg = f'JSON file is saved locally at {filepath}'
-        lg.console_header(console, msg, emoji.pass_green)
 
     def write_yaml(self, lg, filepath: str, json_object: dict) -> None:
         with open(filepath, 'w') as f:
@@ -101,7 +97,7 @@ class Utility():
         with open(filepath) as f:
             print(f.read())
         msg = f'YAML file is saved locally at {filepath}'
-        lg.console_header(console, msg, emoji.pass_green)
+        lg.console_header(console, msg, emojis.memo)
 
     def found_duplicate_cn(self, logger, enrollment: dict, common_name: str) -> bool:
         found = False

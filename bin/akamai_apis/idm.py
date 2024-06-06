@@ -29,7 +29,8 @@ class IdentityAccessManagement(AkamaiSession):
         url = f'{self.base_url}/api-clients/self/account-switch-keys'
         params = {}
         if self.account_switch_key:
-            params = {'search': self.account_switch_key.split(':')[0]}
+            ask_without_type = self.account_switch_key.split(':')[0]
+            params = {'search': ask_without_type}
         resp = self.session.get(url, params=params, headers=self.headers)
 
         if not resp.ok:
@@ -41,7 +42,10 @@ class IdentityAccessManagement(AkamaiSession):
                     self.exit_condition()
             except IndexError:
                 self.exit_condition()
-        self.logger.critical(f'Account Name: {self.account_name}')
+
+        print('\n\n')
+        self.logger.critical(f'Account Name      : {self.account_name}')
+        self.logger.critical(f'Account Switch Key: {ask_without_type}')
         return self.account_name
 
     def __call__(self):
