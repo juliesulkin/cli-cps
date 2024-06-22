@@ -17,13 +17,37 @@ from rich.panel import Panel
 from utils import emojis
 # import coloredlogs
 
-custom_level_styles = {
-    'debug': {'color': 'black'},
-    'info': {'color': 'white'},
-    'warning': {'color': 'yellow'},
-    'error': {'color': 'red'},
-    'critical': {'color': 'magenta'},
-}
+
+
+
+class CLIFormatter(logging.Formatter):
+
+    FORMAT = '%(asctime)s %(process)d [%(threadName)s] %(filename)-25s %(lineno)-5d %(levelname)-8s: %(message)s'
+    DATEFMT = '%Y-%m-%d %H:%M:%S'
+
+    def __init__(self, fmt=FORMAT, datefmt=DATEFMT, root_dir=None):
+        super().__init__(fmt=fmt, datefmt=datefmt)
+        self.root_dir = root_dir if root_dir else os.getcwd()
+
+    def format(self, record):
+        relative_path = os.path.relpath(record.pathname, self.root_dir)
+        parent_dir = os.path.basename(os.path.dirname(relative_path))
+        filename = os.path.basename(record.pathname)
+        record.filename = f'{parent_dir}/{filename}'
+
+        thread_name = getattr(record, 'threadName', None)
+        if thread_name:
+            record.threadName = self.format_thread_name(thread_name)
+            return super().format(record)
+
+        return super().format(record)
+
+    def format_thread_name(self, thread_name):
+        format_thread_name = 'mainthread'
+        if thread_name != 'MainThread':
+            pool_worker = thread_name.split('-')[-1]
+            format_thread_name = f'thread-{pool_worker}'
+        return f'{format_thread_name:<20}'
 
 
 def setup_logger(args):
@@ -36,19 +60,35 @@ def setup_logger(args):
 
     with open(origin_config) as f:
         log_cfg = json.load(f)
-    log_cfg['formatters']['long']['()'] = 'utils.cli.CLIFormatter'
+
+    if args.logfile:
+        log_cfg['handlers']['file_handler'] = {'class': 'logging.FileHandler'}
+        log_cfg['handlers']['file_handler']['filename'] = args.logfile
+        log_cfg['handlers']['file_handler']['mode'] = 'w'
 
     dictConfig(log_cfg)
     logging.Formatter.converter = time.gmtime
     logger = logging.getLogger()
-
     log_level = logging.getLevelName(args.log_level.upper())
-
     logger.setLevel(log_level)
     logger.info(f'{args.log_level.upper()} level: {log_level}')
 
+
+    for handler in logger.handlers:
+        handler.setLevel(log_level)
+        handler.setFormatter(CLIFormatter())
+
+
+
     # Set up colored console logs using coloredlogs library
     '''
+    custom_level_styles = {'debug': {'color': 'black'},
+                           'info': {'color': 'white'},
+                           'warning': {'color': 'yellow'},
+                           'error': {'color': 'red'},
+                           'critical': {'color': 'magenta'},
+                           }
+
     coloredlogs.install(
         logger=logger,
         level=args.log_level.upper(),
@@ -60,7 +100,6 @@ def setup_logger(args):
         },
     )
     '''
-
     return logger
 
 
@@ -83,6 +122,27 @@ def load_local_config_file(config_file: str) -> str:
         shutil.copy2(origin_config, f'config/{config_file}')
 
     return origin_config
+
+
+def log_cli_timing(start_time) -> None:
+    print()
+    end_time = perf_counter()
+    elapse_time = str(strftime('%H:%M:%S', gmtime(end_time - start_time)))
+    msg = f'End Akamai CPS CLI, TOTAL DURATION: {elapse_time}'
+    return msg
+
+
+def countdown(time_sec: int, msg: str):
+    time_min = int(time_sec / 60)
+    msg = f'{msg} {time_min} minutes count down'
+    logger.critical(msg)
+    while time_sec:
+        mins, secs = divmod(time_sec, 60)
+        timeformat = f'{mins:02d}:{secs:02d}'
+        print(f'\t\t\t\t{timeformat}', end='\r')
+        time.sleep(1)
+        time_sec -= 1
+    return 1
 
 
 def console_panel(console: Console, header: str, title: str,
@@ -121,11 +181,3 @@ def console_complete(console: Console):
                             subtitle=f'{emojis.tada * 35}',
                             ))
     print()
-
-
-def log_cli_timing(start_time) -> None:
-    print()
-    end_time = perf_counter()
-    elapse_time = str(strftime('%H:%M:%S', gmtime(end_time - start_time)))
-    msg = f'End Akamai CPS CLI, TOTAL DURATION: {elapse_time}'
-    return msg

@@ -4,6 +4,7 @@ import asyncio
 import csv
 import datetime
 import json
+import logging
 import sys
 import time
 from collections import defaultdict
@@ -29,10 +30,11 @@ from xlsxwriter.workbook import Workbook
 
 
 console = Console(stderr=True)
+logger = logging.getLogger(__name__)
 
 
 def list_enrollment(cps: Enrollment, cps_deploy: Deployment,
-                    util, args, logger) -> None:
+                    util, args) -> None:
     enrollments = []
     resp = cps.list_enrollment(args.contract)
     if not resp.ok:
@@ -61,7 +63,7 @@ def list_enrollment(cps: Enrollment, cps_deploy: Deployment,
         chunks = list(util.split_into_chunks(enrollments, 5))
         future_to_chunk = {}
         for chunk in chunks:
-            future = executor.submit(util.get_deployment_wrapper, logger, chunk, cps_deploy)
+            future = executor.submit(util.get_deployment_wrapper, chunk, cps_deploy)
             future_to_chunk[future] = chunk
             time.sleep(3)
 
@@ -75,7 +77,7 @@ def list_enrollment(cps: Enrollment, cps_deploy: Deployment,
 
     for enrollment in enrollments:
         enrollment['certificate'] = all_results[enrollment['id']]
-        row_values = util.format_enrollments_table(logger, enrollment, True)
+        row_values = util.format_enrollments_table(enrollment, True)
         table.add_row(*row_values)
     console.print(table)
     console.print('[dim][i]** means enrollment has existing pending changes')
@@ -83,7 +85,7 @@ def list_enrollment(cps: Enrollment, cps_deploy: Deployment,
     return enrollments
 
 
-def retrieve_enrollment(cps: Enrollment, util: Utility, args, logger) -> None:
+def retrieve_enrollment(cps: Enrollment, util: Utility, args) -> None:
     if not args.cn and not args.enrollment_id:
         msg = 'Common Name (--cn) or enrollment-id (--enrollment-id) is mandatory'
         sys.exit(logger.error(msg))
@@ -103,7 +105,7 @@ def retrieve_enrollment(cps: Enrollment, util: Utility, args, logger) -> None:
     result['enrollmentId'] = 0000
 
     if backward:
-        if args.cn and util.found_duplicate_cn(logger, enrollments, args.cn):
+        if args.cn and util.found_duplicate_cn(enrollments, args.cn):
             sys.exit(logger.warning('More than 1 enrollment found for same CN. Please use --enrollment-id as input'))
     else:
         enrollment_id = args.enrollment_id if args.enrollment_id else None
@@ -161,7 +163,7 @@ def retrieve_enrollment(cps: Enrollment, util: Utility, args, logger) -> None:
                 util.write_yaml(lg, f'enrollment_{enrollment_id}.yaml', result)
 
 
-def update_enrollment(cps: Enrollment, util: Utility, args, logger) -> None:
+def update_enrollment(cps: Enrollment, util: Utility, args) -> None:
     enrollment_id = args.enrollment_id
     resp = cps.get_enrollment(enrollment_id)
     if not resp.ok:
@@ -178,7 +180,7 @@ def update_enrollment(cps: Enrollment, util: Utility, args, logger) -> None:
             decision = input()
 
     if decision.upper() == 'Y':
-        payload = util.load_json(logger, filepath=args.file)
+        payload = util.load_json(filepath=args.file)
         resp_upd = cps.update_enrollment(args.enrollment_id, payload, renewal=args.force_renewal)
         if not resp_upd.ok:
             logger.error('Unable to update due to the below reason')
@@ -198,7 +200,7 @@ def update_enrollment(cps: Enrollment, util: Utility, args, logger) -> None:
             logger.info(msg)
 
 
-def delete_enrollment(cps: Enrollment, args, logger) -> None:
+def delete_enrollment(cps: Enrollment, args) -> None:
     enrollment_id = args.enrollment_id
     resp = cps.get_enrollment(enrollment_id)
     if not resp.ok:
@@ -237,7 +239,7 @@ def delete_enrollment(cps: Enrollment, args, logger) -> None:
             logger.info('Deletion successful')
 
 
-def deploy_enrollment(cps: Enrollment,  cps_change: Changes, util: Utility, args, logger) -> None:
+def deploy_enrollment(cps: Enrollment,  cps_change: Changes, util: Utility, args) -> None:
     enrollment_id = args.enrollment_id
     resp = cps.get_enrollment(enrollment_id)
     if resp.ok:
@@ -268,7 +270,7 @@ def deploy_enrollment(cps: Enrollment,  cps_change: Changes, util: Utility, args
                     logger.warning(f'{update_change_resp} {update_change_resp.url}')
 
 
-def create_output_file(logger, lg: lg, args) -> str:
+def create_output_file(lg: lg, args) -> str:
     if args.output_file:
         output_file = args.output_file
     else:
@@ -282,7 +284,8 @@ def create_output_file(logger, lg: lg, args) -> str:
         output_file_name = f'CPSAudit_{timestamp}{ext}'
         output_file = Path(f'audit/{output_file_name}')
 
-        msg = 'Preparing output file'
+        print()
+        msg = f"Preparing {ext.upper().lstrip('.')} output file"
         logger.critical(msg)
         if args.json:
             lg.console_header(console, msg, emojis.construction, font_color='blue')
@@ -291,11 +294,16 @@ def create_output_file(logger, lg: lg, args) -> str:
     return output_file
 
 
-def extract_cert_detail(logger, contract_id: str, enrl: dict) -> list:
+def extract_cert_detail(contract_id: str, enrl: dict) -> list:
 
     detail = []
     try:
         enrollment_id = enrl['id']
+        try:
+            slot = enrl.get('productionSlots', []).pop(0)
+        except IndexError:
+            slot = enrl.get('staggingSlots', 0)
+
     except TypeError:
         enrollment_id = 0
         logger.critical('enrollment-id fetch error')
@@ -306,7 +314,7 @@ def extract_cert_detail(logger, contract_id: str, enrl: dict) -> list:
     total_san = len(san)
     cn = cn if total_san == 0 else f'{cn} [{total_san}]'
     san_str = ' '.join(f"'{hostname}'" for hostname in san)
-    detail.extend([contract_id, enrollment_id, cn, san_str])
+    detail.extend([contract_id, enrollment_id, slot, cn, san_str])
 
     pending = enrl['pendingChanges']
     if len(pending) <= 0:
@@ -353,7 +361,7 @@ def extract_cert_detail(logger, contract_id: str, enrl: dict) -> list:
     return detail
 
 
-def build_csv_rows(logger, args,
+def build_csv_rows(args,
                    cps_change: Changes,
                    cps_deploy: Deployment,
                    data_json: dict) -> list:
@@ -366,15 +374,26 @@ def build_csv_rows(logger, args,
     rows = []
     console_rows = []
     for i, enrl in enumerate(enrls, 1):
-        detail = extract_cert_detail(logger, contract_id, enrl)
+        detail = extract_cert_detail(contract_id, enrl)
         enrollment_id = detail[1]
 
         cps_deploy.enrollment_id = enrollment_id
         prod_resp = cps_deploy.get_production_deployment()
         expiry = ' '
+        algorithm = ' '
+
         if prod_resp.ok:
+            algorithm = prod_resp.json()['primaryCertificate']['keyAlgorithm']
+            multi = prod_resp.json()['multiStackedCertificates']
+            if len(multi) > 0:
+                algorithm = multi[0]['keyAlgorithm']
+                logger.debug(f'{enrollment_id} {algorithm}')
+
             expiry = prod_resp.json()['primaryCertificate']['expiry']
-        detail.insert(5, expiry)
+        logger.debug(f'{enrollment_id:<10} {algorithm:<5} {expiry}')
+
+        detail.insert(6, expiry)
+        detail.insert(6, algorithm)
         status = detail[4]
 
         pending = enrl['pendingChanges']
@@ -414,29 +433,42 @@ def build_csv_rows(logger, args,
 
         detail.extend([pending_detail, order_id])
         rows.append(detail)
-        console_data = detail[:3] + detail[4:10] + [detail[-1]]
+        console_data = detail[:4] + detail[5:10] + [detail[-1]]
         console_rows.append(console_data)
 
     return (rows, console_rows)
 
 
-def combined(logger, args, account_enrollments, cps_change, cps_deploy) -> list:
+async def build_csv_rows_async(args, cps_change, cps_deploy, enrl_in_contract):
+    return await asyncio.to_thread(build_csv_rows, args, cps_change, cps_deploy, enrl_in_contract)
+
+
+async def combined(args, account_enrollments, cps_change, cps_deploy) -> list:
     rows = []
     console_rows = []
-    for enrl_in_contract in account_enrollments:
-        output, console_output = build_csv_rows(logger, args,
-                                                cps_change, cps_deploy,
-                                                enrl_in_contract)
+    print()
+    logger.critical('START ... ')
+    tasks = [
+        build_csv_rows_async(args, cps_change, cps_deploy, enrl_in_contract)
+        for enrl_in_contract in account_enrollments
+    ]
+
+    # Run all tasks concurrently and wait for them to complete
+    results = await asyncio.gather(*tasks)
+
+    # Combine the results
+    for output, console_output in results:
         rows.extend(output)
         console_rows.extend(console_output)
 
-    headers = ['contractId', 'enrollment_id', 'CN', 'SAN(S)',
-               'status', 'Expiry', 'Validation', 'Type', 'Test on Staging', 'SNI Only',
+    logger.critical('COMPLETE ...')
+    headers = ['contractId', 'enrollment_id', 'slot', 'CN', 'SAN(S)', 'status',
+               'keyAlgorithm', 'Expiry', 'Validation', 'Type', 'Test on Staging', 'SNI Only',
                'Secure Network', 'preferredCiphers', 'mustHaveCiphers', 'disallowedTlsVersions',
                'Geography', 'Country', 'State',
                'Organization', 'Organization Unit',
                'Admin Contact', 'Tech Contact']
-    console_headers = ['contractId', 'enrollment_id', 'CN SAN(S)', 'status', 'Expiry', 'Validation', 'Type',
+    console_headers = ['contractId', 'enrollment_id', 'slot', 'CN SAN(S)', 'status', 'keyAlgorithm', 'Expiry', 'Validation', 'Type',
                        'Test on Staging', 'SNI Only']
 
     if args.include_change_details:
@@ -447,10 +479,40 @@ def combined(logger, args, account_enrollments, cps_change, cps_deploy) -> list:
     csv_data = {'headers': headers, 'output': rows}
     console_data = {'headers': console_headers, 'output': console_rows}
     result = [csv_data, console_data]
+
     return result
 
 
-def build_output_xlsx(logger, util: Utility, output_file: str, headers: list, data_rows: list):
+def combined_x(args, account_enrollments, cps_change, cps_deploy) -> list:
+    rows = []
+    console_rows = []
+    for enrl_in_contract in account_enrollments:
+        output, console_output = build_csv_rows(args,
+                                                cps_change, cps_deploy,
+                                                enrl_in_contract)
+        rows.extend(output)
+        console_rows.extend(console_output)
+
+    shared_headers = ['contractId', 'enrollment_id', 'slot', 'CN', 'SAN(S)', 'status',
+                      'keyAlgorithm', 'Expiry', 'Validation', 'Type', 'Test on Staging', 'SNI Only']
+    console_headers = shared_headers
+    csv_headers = shared_headers.extend(['Secure Network', 'preferredCiphers', 'mustHaveCiphers', 'disallowedTlsVersions',
+                                         'Geography', 'Country', 'State',
+                                         'Organization', 'Organization Unit',
+                                         'Admin Contact', 'Tech Contact'])
+
+    if args.include_change_details:
+        change_detail_headers = ['Change Status Details', 'OrderId']
+        csv_headers.extend(change_detail_headers)
+        console_headers.append('OrderId')
+
+    csv_data = {'headers': csv_headers, 'output': rows}
+    console_data = {'headers': console_headers, 'output': console_rows}
+    result = [csv_data, console_data]
+    return result
+
+
+def build_output_xlsx(util: Utility, output_file: str, headers: list, data_rows: list):
     temp_csv = str(output_file).replace('.xlsx', '.csv')
     with open(temp_csv, 'w', newline='') as csvfile:
         csvwriter = csv.writer(csvfile)
@@ -473,11 +535,14 @@ def build_output_xlsx(logger, util: Utility, output_file: str, headers: list, da
         file_path.unlink()
 
 
-def collect_certs_with_contract(logger, cps: Enrollment, contracts: list) -> tuple[list, int]:
+def collect_certs_with_contract(cps: Enrollment, contracts: list) -> tuple[list, int]:
     account_enrollments = []
     enrl_count = 0
+    logger.debug(contracts)
+
     for contract_id in contracts:
         enrl_resp = cps.list_enrollment(contract_id)
+        enrl_resp.url
         if not enrl_resp.ok:
             logger.debug(f'{contract_id:<10} no    enrollments')
         else:
@@ -493,35 +558,39 @@ def collect_certs_with_contract(logger, cps: Enrollment, contracts: list) -> tup
     return account_enrollments, enrl_count
 
 
-def initial_processing(logger, lg, args, cps, util,
+def initial_processing(lg, args, cps, util,
                        account_enrollments: list,
                        batch_size: int):
     all_enrollments = []
     t0 = perf_counter()
+    print()
+    msg = 'Collecting enrollment detail'
+    logger.critical(msg)
+    lg.console_header(console, msg, emojis.bow, font_color='medium_violet_red')
 
     for account in account_enrollments:
         contract = account['contractId']
         ids = account['enrollmentId']
         msg_stat = f'{contract:<10}: {len(ids):>5}'
-        msg = f'Collecting enrollment detail for contract {msg_stat} enrollments'
-        logger.warning(msg)
-        lg.console_header(console, msg, emojis.bow, font_color='yellow')
-        print()
+        msg = f'   contract {msg_stat} enrollments'
+        logger.info(msg)
+        # lg.console_header(console, msg, emojis.heavy_check_mark, font_color='pink3')
 
-        enrollments = asyncio.run(util_async.multiple_chunks(logger, args, cps, util, batch_size, contract, ids))
+        enrollments = asyncio.run(util_async.multiple_chunks(args, cps, util, batch_size, contract, ids))
         all_enrollments.append(enrollments)
     ttp = 'Total requests time (1st)'
     t1 = perf_counter()
     elapse_time = str(strftime('%H:%M:%S', gmtime(t1 - t0)))
-    logger.critical(f'{ttp} {elapse_time}')
+    logger.debug(f'{ttp} {elapse_time}')
     return all_enrollments
 
 
-def retry_processing(logger, lg, args, cps, util,
+def retry_processing(lg, args, cps, util,
                      account_enrollments: list,
                      batch_size: int):
     all_enrollments = []
     t0 = perf_counter()
+    print()
 
     for account in account_enrollments:
         contract = account['contractId']
@@ -529,9 +598,9 @@ def retry_processing(logger, lg, args, cps, util,
         msg_stat = f'{contract:<10}: {len(ids):>5}'
         if len(ids) > 0:
             msg = f'RETRY      enrollment detail for contract {msg_stat} enrollments'
-            logger.warning(msg)
-            lg.console_header(console, msg, emojis.blush, font_color='yellow')
-            enrollments = asyncio.run(util_async.multiple_chunks(logger, args, cps, util, batch_size, contract, ids))
+            logger.critical(msg)
+            lg.console_header(console, msg, emojis.retry, font_color='yellow')
+            enrollments = asyncio.run(util_async.multiple_chunks(args, cps, util, batch_size, contract, ids))
             all_enrollments.append(enrollments)
 
     if len(all_enrollments) > 0:
@@ -542,7 +611,7 @@ def retry_processing(logger, lg, args, cps, util,
         return all_enrollments
 
 
-def combined_result(logger, all_enrollments, retry: bool | None = False) -> list:
+def combined_result(all_enrollments, retry: bool | None = False) -> list:
 
     new_enrollments = []
 
@@ -565,54 +634,71 @@ def combined_result(logger, all_enrollments, retry: bool | None = False) -> list
     return new_enrollments
 
 
-def audit(args, logger, util: Utility,
+def audit(args, util: Utility,
           cps: Enrollment,
           cps_change: Changes,
           cps_deploy: Deployment) -> None:
-
     """
     To view orderId
     https://tools.gss.akamai.com/monitor/certs/DigiCert/index.pl?type=orderid
     """
-    contracts = args.contract if args.contract else cps.get_contract().json()
-    account_enrollments, enrl_count = collect_certs_with_contract(logger, cps, contracts)
 
+    if args.contract:
+        contracts = args.contract
+    else:
+        contract_resp = cps.get_contract()
+        if not contract_resp.ok:
+            logger.error(contract_resp.json()['detail'])
+        else:
+            contracts = contract_resp.json()
+
+    account_enrollments, enrl_count = collect_certs_with_contract(cps, contracts)
     lg.console_header(console, f'{enrl_count} enrollments found', emojis.gem, font_color='blue', font_style='bold')
     logger.critical(f'{enrl_count} enrollments found')
 
-    good_enrollments = initial_processing(logger, lg, args, cps, util, account_enrollments, batch_size=20)
+    if enrl_count == 0:
+        exit(-1)
 
-    new_enrollments = combined_result(logger, good_enrollments)
+    first_audit = initial_processing(lg, args, cps, util, account_enrollments, batch_size=20)
 
-    retry_enrollments = retry_processing(logger, lg, args, cps, util, new_enrollments, batch_size=10)
+    new_enrollments = combined_result(first_audit)
+
+    if len(new_enrollments) == 0:
+        logger.info('found nothing')
+        exit(-1)
+
+    retry_enrollments = retry_processing(lg, args, cps, util, new_enrollments, batch_size=10)
 
     if retry_enrollments:
-        fixed_enrollments = combined_result(logger, retry_enrollments, retry=True)
-        util.write_json(lg, console, filepath='3.json', json_object={'results': fixed_enrollments})
+        second_audit = combined_result(retry_enrollments, retry=True)
+        # util.write_json(lg, console, filepath='logs/1st_audit.json', json_object={'results': new_enrollments})
+        new_enrollments.extend(second_audit)
+        # util.write_json(lg, console, filepath='logs/2nd_audit.json', json_object={'results': new_enrollments})
+        # util.write_json(lg, console, filepath='logs/retry_audit.json', json_object={'results': second_audit})
 
-    output_file = create_output_file(logger, lg, args)
+    output_file = create_output_file(lg, args)
     if args.json:
         print()
         util.write_json(lg, console, filepath=output_file, json_object={'results': new_enrollments})
-        msg = f'Done! Output file written here: {output_file}'
-        lg.console_header(console, msg, emojis.tada, sandwiches=True)
-        logger.critical(msg)
 
-        return 1
+    result = asyncio.run(combined(args, new_enrollments, cps_change, cps_deploy))
+    r = list(result)
 
-    result = combined(logger, args, new_enrollments, cps_change, cps_deploy)
     if not args.xlsx:
+        print()
         with open(output_file, 'w', newline='') as csvfile:
             csvwriter = csv.writer(csvfile)
-            csvwriter.writerow(result[0]['headers'])
-            csvwriter.writerows(result[0]['output'])
+            csvwriter.writerow(r[0]['headers'])
+            csvwriter.writerows(r[0]['output'])
     else:
-        build_output_xlsx(logger, util, output_file, result[0]['headers'], result[0]['output'])
+        build_output_xlsx(util, output_file, r[0]['headers'], r[0]['output'])
 
-    print(tabulate(result[1]['output'], headers=result[1]['headers'], tablefmt='psql'))
     msg = f'Done! Output file written here: {output_file}'
     lg.console_header(console, msg, emojis.tada, sandwiches=True)
     logger.critical(msg)
+
+    if len(r[1]['output']) > 0 and args.tbl:
+        print(tabulate(r[1]['output'], headers=r[1]['headers'], tablefmt='psql', numalign='center'))
 
 
 if __name__ == '__main__':

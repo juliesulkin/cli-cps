@@ -17,17 +17,17 @@ from utils import emojis
 
 
 console = Console(stderr=True)
+logger = logging.getLogger(__name__)
 
 
 class Utility():
-    def __init__(self, logger: logging.Logger):
-        self.logger = logger
+    def __init__(self):
         self.hostnames = []
         self.waiting = f'{emojis.clock} waiting'
         self.max_column_width = 20
         self.column_width = 30
 
-    def call_api(self, logger, cps: cps.Enrollment, chunk: list, contract_id: str | None = None):
+    def call_api(self, cps: cps.Enrollment, chunk: list, contract_id: str | None = None):
         if contract_id:
             cps._params['contractId'] = contract_id
 
@@ -75,7 +75,7 @@ class Utility():
         if platform.system() == 'Darwin' and show is True:
             subprocess.check_call(['open', '-a', 'Microsoft Excel', filepath])
 
-    def load_json(self, logger, filepath: str) -> dict:
+    def load_json(self, filepath: str) -> dict:
         with open(filepath) as user_file:
             file_contents = user_file.read()
         filepath = Path(f'{filepath}').absolute()
@@ -99,7 +99,7 @@ class Utility():
         msg = f'YAML file is saved locally at {filepath}'
         lg.console_header(console, msg, emojis.memo)
 
-    def found_duplicate_cn(self, logger, enrollment: dict, common_name: str) -> bool:
+    def found_duplicate_cn(self, enrollment: dict, common_name: str) -> bool:
         found = False
         for x in enrollment:
             if x['cn'] == common_name and 'sans' in x and common_name in x['sans']:
@@ -107,7 +107,7 @@ class Utility():
                 logger.debug(x)
         return found
 
-    def show_enrollments_table(self, logger, args, enrollments: list):
+    def show_enrollments_table(self, args, enrollments: list):
         show_expiration = args.show_expiration
         enrls = [x for x in enrollments]
         enrls_output = []
@@ -132,7 +132,7 @@ class Utility():
             changeManagement = 'Yes' if enrl['changeManagement'] else 'No'
 
             if show_expiration:
-                deploy = cps.Deployment(args, logger, enrollment_id)
+                deploy = cps.Deployment(args, enrollment_id)
                 expired_resp = deploy.get_product_deployement()
                 expiration = ' '
                 if expired_resp.ok:
@@ -162,7 +162,7 @@ class Utility():
         print(tabulate(sorted_output, headers=headers, tablefmt='psql'))
         logger.warning('** means enrollment has existing pending changes')
 
-    def format_enrollments_table(self, logger, enrollment: list, show_expiration: bool | None = False):
+    def format_enrollments_table(self, enrollment: list, show_expiration: bool | None = False):
         enrollment_id = f'*{enrollment["id"]}*' if len(enrollment['pendingChanges']) != 0 else enrollment['id']
         san_count = len(enrollment['csr']['sans']) if len(enrollment['csr']['sans']) > 0 else 1
         common_name = f'{enrollment["csr"]["cn"]} ({san_count})'

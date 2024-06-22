@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import inspect
+from pathlib import Path
 
 import rich_argparse as rap
 import utils.cli as cli
@@ -66,12 +68,21 @@ class AkamaiParser(argparse.ArgumentParser):
         parser.add_argument('-s', '--section',
                             metavar='', type=str, dest='section', default='default',
                             help='section of the credentials file [$AKAMAI_EDGERC_SECTION]')
-        parser.add_argument('-v', '--version', action='version', version='%(prog)s v1.0.0',
-                             help='show akamai cli cps version')
-        parser.add_argument('-h', '--help', action='help', help='show this help message and exit')
+        parser.add_argument('-h', '--help', action='help',
+                            help='show this help message and exit')
+
         parser.add_argument('-l', '--log-level',
                             choices=['debug', 'info', 'warning', 'error', 'critical'],
                             default='info')
+
+        called_from = Path(inspect.stack()[1].filename).stem
+        if called_from.startswith('akamai-'):
+            called_from = called_from[7:]
+        parser.add_argument('--logFile', dest='logfile', metavar='', type=str, help='override log output to a specified file',
+                            default=f'logs/{called_from}.log')
+
+        parser.add_argument('-v', '--version', action='version', version='%(prog)s v1.0.0',
+                             help='show akamai cli cps version')
 
         subparsers = parser.add_subparsers(title='commands', metavar='', dest='command')
 
@@ -151,20 +162,17 @@ class AkamaiParser(argparse.ArgumentParser):
         if optional_arguments:
             optional = action.add_argument_group('Optional Arguments')
             for arg in optional_arguments:
-                if arg['name'] == '--group-id':
-                    cls.add_mutually_exclusive_group(action, arg, '--property-id')
-                elif arg['name'] == '--property-id':
-                    cls.add_mutually_exclusive_group(action, arg, '--group-id')
-                else:
-                    name = arg['name']
-                    del arg['name']
-                    try:
-                        action_value = arg['action']
-                        del arg['action']
-                        optional.add_argument(f'--{name}', required=False, action=action_value, **arg)
-                    except KeyError:
-                        optional.add_argument(f'--{name}', metavar='', required=False, **arg)
+                name = arg['name']
+                del arg['name']
+                try:
+                    action_value = arg['action']
+                    del arg['action']
+                    optional.add_argument(f'--{name}', required=False, action=action_value, **arg)
+                except KeyError:
+                    optional.add_argument(f'--{name}', metavar='', required=False, **arg)
 
             optional.add_argument('--log-level',
                                   choices=['debug', 'info', 'warning', 'error', 'critical'],
                                   default='info')
+
+            optional.add_argument('--logfile', dest='logfile', metavar='', type=str, help='override log output to a specified file')

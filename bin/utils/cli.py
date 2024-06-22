@@ -1,15 +1,5 @@
 from __future__ import annotations
 
-import logging
-import os
-
-
-# Create a custom formatter that includes the folder name
-class CLIFormatter(logging.Formatter):
-    def format(self, record):
-        record.filename = os.path.join(os.path.basename(os.path.dirname(record.pathname)), os.path.basename(record.filename))
-        return super().format(record)
-
 
 main_commands = [{'list': 'List all enrollments',
                   'optional_arguments': [{'name': 'contract', 'help': 'contract without ctr_ prefix', 'nargs': '+'},
@@ -60,9 +50,10 @@ main_commands = [{'list': 'List all enrollments',
                   'optional_arguments': [{'name': 'contract', 'help': 'contract without ctr_ prefix', 'nargs': '+'},
                                          {'name': 'concurrency', 'help': 'concurrency', 'default': 5},
                                          {'name': 'output-file', 'help': 'name of the output file to be saved to'},
-                                         {'name': 'json', 'help': 'output format is json', 'action': 'store_true'},
-                                         {'name': 'xlsx', 'help': 'output format is xlsx', 'action': 'store_true'},
-                                         {'name': 'csv', 'help': 'output format is csv', 'action': 'store_true'},
+                                         {'name': 'json', 'help': 'JSON output            ', 'action': 'store_true'},
+                                         {'name': 'xlsx', 'help': 'XLSX output            ', 'action': 'store_true'},
+                                         {'name': 'csv', 'help': 'CSV output              ', 'action': 'store_true'},
+                                         {'name': 'tbl', 'help': 'display result in console', 'action': 'store_true'},
                                          {'name': 'include-change-details', 'help': 'include details of pending certificates',
                                           'action': 'store_true'}]},
                  {'proceed': 'Proceed to deploy certificate',

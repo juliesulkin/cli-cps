@@ -6,7 +6,7 @@
       "format": "%(levelname)-8s: %(message)s"
     },
     "long": {
-      "format": "%(asctime)s %(process)d %(filename)-30s %(lineno)-5d %(levelname)-8s: %(message)s",
+      "format": "%(asctime)s %(process)d [%(threadName)s] %(filename)-25s %(lineno)-5d %(levelname)-8s: %(message)s",
       "datefmt": "%Y-%m-%d %H:%M:%S"
     }
   },

@@ -40,6 +40,8 @@ checking          = emojis.encode(':police_officer:')
 construction      = emojis.encode(':construction:')
 pending           = emojis.encode(':hourglass_flowing_sand:')
 magnify_glass     = emojis.encode(':mag:')
+retry             = emojis.encode(':repeat:')
+
 
 # milestone
 dart              = emojis.encode(':dart:')

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sys
 from configparser import NoSectionError
 from pathlib import Path
@@ -11,21 +12,26 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 
+logger = logging.getLogger(__name__)
+
+
 class AkamaiSession:
-    def __init__(self, args, logger):
+    def __init__(self, args, account_switch_key: str | None = None):
+
         if args.edgerc is None:
             self.edgerc_file = EdgeRc(f'{str(Path.home())}/.edgerc')
         else:
             self.edgerc_file = EdgeRc(f'{str(Path(args.edgerc))}')
-        self.account_switch_key = args.account_switch_key if args.account_switch_key else None
-        try:
-            self.contract_id = args.contract if args.contract else 0
-        except Exception:
-            self.contract_id = 0
-
         self.section = args.section if args.section else 'default'
-        self.logger = logger
+
+        self.account_switch_key = account_switch_key if account_switch_key else args.account_switch_key
         self._params = {}
+        self._params = {'accountSwitchKey': self.account_switch_key}
+
+        if 'contract' in args:
+            self.contract_id = args.contract
+        else:
+            self.contract_id = 0
 
         try:
             self.host = self.edgerc_file.get(self.section, 'host')
@@ -33,7 +39,7 @@ class AkamaiSession:
             self.session = requests.Session()
             self.session.auth = EdgeGridAuth.from_edgerc(self.edgerc_file, self.section)
         except NoSectionError:
-            sys.exit(self.logger.error(f'edgerc section "{self.section}" not found'))
+            sys.exit(logger.error(f'edgerc section "{self.section}" not found'))
 
         retry_strategy = Retry(total=3,
                                backoff_factor=1,

@@ -1,5 +1,10 @@
 # Techdocs reference
 # https://techdocs.akamai.com/cps/reference/api-summary
+
+# https://techdocs.akamai.com/cps/reference/rate-limiting
+# Maximum limit of 100 requests per every 2 minutes, per account.
+# Short-term rate limit of 20 requests per 2 seconds, per account.
+
 from __future__ import annotations
 
 import logging
@@ -10,33 +15,26 @@ from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from ratelimit import limits
 from ratelimit import sleep_and_retry
+from requests import Response
+from requests.exceptions import ChunkedEncodingError
 from rich.console import Console
 
+
 console = Console(stderr=True)
-
 logger = logging.getLogger(__name__)
-# https://techdocs.akamai.com/cps/reference/rate-limiting
-# Maximum limit of 100 requests per every 2 minutes, per account.
-# Short-term rate limit of 20 requests per 2 seconds, per account.
-
-TIME_PERIOD = 2
-MAX_CALLS = 20
 
 
-class Cps(AkamaiSession):
-    def __init__(self, args, logger: logging.Logger = None):
-        super().__init__(args, logger)
-        self.logger = logger
+TIME_PERIOD = 1
+MAX_CALLS = 5
 
 
 class Enrollment(AkamaiSession):
-    def __init__(self, args, logger: logging.Logger = None):
-        super().__init__(args, logger)
+    def __init__(self, args):
+        super().__init__(args)
         self.MODULE = f'{self.base_url}/cps/v2'
         self.headers = {'accept': 'application/vnd.akamai.cps.enrollments.v11+json'}
         self._params = super().params
         self._enrollment_id = None
-        self.logger = logger
         self._url_endpoint = None
 
     @property
@@ -49,7 +47,7 @@ class Enrollment(AkamaiSession):
 
     @sleep_and_retry
     @limits(calls=MAX_CALLS, period=TIME_PERIOD)
-    def get_enrollment(self, enrollment_id: int):
+    def get_enrollment(self, enrollment_id: int) -> tuple[Response, int]:
         """
         Gets an enrollment.
         """
@@ -58,14 +56,19 @@ class Enrollment(AkamaiSession):
 
         if 'contractId' in self._params:
             del self._params['contractId']
-
-        resp = self.session.get(url, headers=headers, params=self._params)
-        if not resp.ok:
-            self.logger.debug(f'{enrollment_id:<10} {resp.url}')
+        resp = None
+        try:
+            with self.session.get(url, headers=headers, params=self._params) as resp:
+                if not resp.ok:
+                    logger.debug(f'{enrollment_id:<20} {resp.url}')
+                    return resp, enrollment_id
+                else:
+                    self._enrollment_id = enrollment_id
+                    logger.debug(f'{enrollment_id:<20} {resp}')
+                    return resp, enrollment_id
+        except ChunkedEncodingError as err:
+            logger.debug(f'{enrollment_id:<10} {err}')
             return resp, enrollment_id
-        else:
-            self._enrollment_id = enrollment_id
-            return resp
 
     def list_enrollment(self, contract_id: str | None = None):
         """
@@ -75,7 +78,18 @@ class Enrollment(AkamaiSession):
             self._params['contractId'] = contract_id
         url = f'{self.MODULE}/enrollments'
         resp = self.session.get(url, params=self._params, headers=self.headers)
-        self.logger.debug(resp.url)
+        logger.debug(resp.url)
+        return resp
+
+    def list_active_enrollment(self, contract_id: str | None = None):
+        """
+        A list of the names of each enrollment.
+        """
+        if contract_id:
+            self._params['contractId'] = contract_id
+        url = f'{self.MODULE}/active-certificates'
+        resp = self.session.get(url, params=self._params, headers=self.headers)
+        logger.debug(resp.url)
         return resp
 
     def create_enrollment(self, contract_id: str, payload: dict):
@@ -150,12 +164,11 @@ class Enrollment(AkamaiSession):
 
 
 class Deployment(Enrollment):
-    def __init__(self, args, logger: logging.Logger = None, enrollment_id: int | None = None):
-        super().__init__(args, logger)
+    def __init__(self, args, enrollment_id: int | None = None):
+        super().__init__(args)
         self.MODULE = f'{self.base_url}/cps/v2'
         self.headers = {'accept': 'application/vnd.akamai.cps.deployment.v8+json'}
         self._params = super().params
-        self.logger = logger
         self._enrollment_id = enrollment_id
 
     @property
@@ -183,6 +196,7 @@ class Deployment(Enrollment):
             enrollment_id = override_enrollment_id
 
         url = f'{self.MODULE}/enrollments/{enrollment_id}/deployments/production'
+        logger.debug(url)
         return self.session.get(url, headers=self.headers, params=self._params)
 
     def get_staging_deployement(self):
@@ -190,14 +204,15 @@ class Deployment(Enrollment):
         Gets the enrollments deployed on the staging network.
         """
         url = f'{self.MODULE}/enrollments/{self.enrollment_id}/deployments/staging'
+        logger.debug(url)
         return self.session.get(url, params=self._params, headers=self.headers)
 
 
 class Changes(Enrollment):
     custom_headers = headers.category
 
-    def __init__(self, args, logger: logging.Logger = None, enrollment_id: int | None = None):
-        super().__init__(args, logger)
+    def __init__(self, args, enrollment_id: int | None = None):
+        super().__init__(args)
         self.MODULE = f'{self.base_url}/cps/v2'
         self._params = super().params
         self._enrollment_id = enrollment_id
@@ -258,7 +273,6 @@ class Changes(Enrollment):
                          if change_type in item][0]
         url = f'{self.base_url}{self._url_endpoint}'
         logger.critical(url)
-
         return self.session.get(url, headers=custom_header, params=self._params)
 
     def update_change(self, change_type: str, hash_value: str, change_id: int | None = 0):
