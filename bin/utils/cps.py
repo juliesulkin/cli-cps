@@ -27,7 +27,7 @@ from utils import emojis
 from utils import util_async
 from utils.utility import Utility
 from xlsxwriter.workbook import Workbook
-
+from utils.util_async import run_in_executor
 
 console = Console(stderr=True)
 logger = logging.getLogger(__name__)
@@ -383,6 +383,13 @@ def build_csv_rows(args,
         algorithm = ' '
 
         if prod_resp.ok:
+            '''
+            slot_id = detail[2]
+            if slot_id in [5009, 7389]:
+                print_json(data=prod_resp.json())
+                breakpoint()
+            '''
+
             algorithm = prod_resp.json()['primaryCertificate']['keyAlgorithm']
             multi = prod_resp.json()['multiStackedCertificates']
             if len(multi) > 0:
@@ -432,6 +439,7 @@ def build_csv_rows(args,
                                         print_json(data=cert)
 
         detail.extend([pending_detail, order_id])
+        logger.info(detail[:4])
         rows.append(detail)
         console_data = detail[:4] + detail[5:10] + [detail[-1]]
         console_rows.append(console_data)
@@ -439,8 +447,12 @@ def build_csv_rows(args,
     return (rows, console_rows)
 
 
-async def build_csv_rows_async(args, cps_change, cps_deploy, enrl_in_contract):
-    return await asyncio.to_thread(build_csv_rows, args, cps_change, cps_deploy, enrl_in_contract)
+async def build_csv_rows_async(executor, args, cps_change, cps_deploy, account_enrollments):
+
+    futures = [run_in_executor(executor, build_csv_rows, args, cps_change, cps_deploy, id) for id in account_enrollments]
+    certs = await asyncio.gather(*futures)
+    # return await asyncio.to_thread(build_csv_rows, args, cps_change, cps_deploy, enrl_in_contract)
+    return certs
 
 
 async def combined(args, account_enrollments, cps_change, cps_deploy) -> list:
@@ -448,18 +460,18 @@ async def combined(args, account_enrollments, cps_change, cps_deploy) -> list:
     console_rows = []
     print()
     logger.critical('START ... ')
-    tasks = [
-        build_csv_rows_async(args, cps_change, cps_deploy, enrl_in_contract)
-        for enrl_in_contract in account_enrollments
-    ]
 
-    # Run all tasks concurrently and wait for them to complete
-    results = await asyncio.gather(*tasks)
+    with ThreadPoolExecutor(max_workers=int(args.concurrency)) as executor:
+        tasks = [
+            build_csv_rows_async(executor, args, cps_change, cps_deploy, account_enrollments)
 
-    # Combine the results
-    for output, console_output in results:
-        rows.extend(output)
-        console_rows.extend(console_output)
+        ]
+        results = await asyncio.gather(*tasks)
+
+    for result in results:
+        for xlsx, console_output  in result:
+            rows.extend(xlsx)
+            console_rows.extend(console_output)
 
     logger.critical('COMPLETE ...')
     headers = ['contractId', 'enrollment_id', 'slot', 'CN', 'SAN(S)', 'status',
@@ -572,8 +584,8 @@ def initial_processing(lg, args, cps, util,
         contract = account['contractId']
         ids = account['enrollmentId']
         msg_stat = f'{contract:<10}: {len(ids):>5}'
-        msg = f'   contract {msg_stat} enrollments'
-        logger.info(msg)
+        msg = f'contract {msg_stat} enrollments'
+        logger.warning(msg)
         # lg.console_header(console, msg, emojis.heavy_check_mark, font_color='pink3')
 
         enrollments = asyncio.run(util_async.multiple_chunks(args, cps, util, batch_size, contract, ids))
@@ -671,18 +683,19 @@ def audit(args, util: Utility,
 
     if retry_enrollments:
         second_audit = combined_result(retry_enrollments, retry=True)
-        # util.write_json(lg, console, filepath='logs/1st_audit.json', json_object={'results': new_enrollments})
+        # util.write_json(filepath='logs/1st_audit.json', json_object={'results': new_enrollments})
         new_enrollments.extend(second_audit)
-        # util.write_json(lg, console, filepath='logs/2nd_audit.json', json_object={'results': new_enrollments})
-        # util.write_json(lg, console, filepath='logs/retry_audit.json', json_object={'results': second_audit})
+        # util.write_json(filepath='logs/2nd_audit.json', json_object={'results': new_enrollments})
+        # util.write_json(filepath='logs/retry_audit.json', json_object={'results': second_audit})
 
     output_file = create_output_file(lg, args)
     if args.json:
         print()
-        util.write_json(lg, console, filepath=output_file, json_object={'results': new_enrollments})
+        util.write_json(filepath=output_file, json_object={'results': new_enrollments})
 
-    result = asyncio.run(combined(args, new_enrollments, cps_change, cps_deploy))
-    r = list(result)
+    if args.xlsx or args.tbl:
+        result = asyncio.run(combined(args, new_enrollments, cps_change, cps_deploy))
+        r = list(result)
 
     if not args.xlsx:
         print()

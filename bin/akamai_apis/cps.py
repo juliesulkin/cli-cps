@@ -60,15 +60,15 @@ class Enrollment(AkamaiSession):
         try:
             with self.session.get(url, headers=headers, params=self._params) as resp:
                 if not resp.ok:
-                    logger.debug(f'{enrollment_id:<20} {resp.url}')
-                    return resp, enrollment_id
+                    logger.error(f'{enrollment_id:<20} {resp.status_code} {resp.json()['detail']}')
+                    return enrollment_id, resp
                 else:
                     self._enrollment_id = enrollment_id
-                    logger.debug(f'{enrollment_id:<20} {resp}')
-                    return resp, enrollment_id
+                    logger.info(f'{enrollment_id:<20} {resp}')
+                    return enrollment_id, resp
         except ChunkedEncodingError as err:
-            logger.debug(f'{enrollment_id:<10} {err}')
-            return resp, enrollment_id
+            logger.error(f'{enrollment_id:<10} {err}')
+            return enrollment_id, resp
 
     def list_enrollment(self, contract_id: str | None = None):
         """
