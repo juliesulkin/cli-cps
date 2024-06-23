@@ -15,14 +15,14 @@ from rich import print
 from rich.console import Console
 from rich.panel import Panel
 from utils import emojis
-# import coloredlogs
 
 
+logger = logging.getLogger(__name__)
 
 
 class CLIFormatter(logging.Formatter):
 
-    FORMAT = '%(asctime)s %(process)d [%(threadName)s] %(filename)-25s %(lineno)-5d %(levelname)-8s: %(message)s'
+    FORMAT = '%(asctime)s %(process)d [%(threadName)s] %(filename)-20s %(lineno)-5d %(levelname)-8s: %(message)s'
     DATEFMT = '%Y-%m-%d %H:%M:%S'
 
     def __init__(self, fmt=FORMAT, datefmt=DATEFMT, root_dir=None):
@@ -43,11 +43,14 @@ class CLIFormatter(logging.Formatter):
         return super().format(record)
 
     def format_thread_name(self, thread_name):
-        format_thread_name = 'mainthread'
+        format_thread_name = ''
         if thread_name != 'MainThread':
             pool_worker = thread_name.split('-')[-1]
-            format_thread_name = f'thread-{pool_worker}'
-        return f'{format_thread_name:<20}'
+            if pool_worker.startswith('asyncio'):
+                format_thread_name = pool_worker
+            else:
+                format_thread_name = f'thread-{pool_worker}'
+        return f'{format_thread_name:<10}'
 
 
 def setup_logger(args):
@@ -71,35 +74,13 @@ def setup_logger(args):
     logger = logging.getLogger()
     log_level = logging.getLevelName(args.log_level.upper())
     logger.setLevel(log_level)
-    logger.info(f'{args.log_level.upper()} level: {log_level}')
-
 
     for handler in logger.handlers:
         handler.setLevel(log_level)
         handler.setFormatter(CLIFormatter())
 
+    logger.debug(f'{args.log_level.upper()} level: {log_level}')
 
-
-    # Set up colored console logs using coloredlogs library
-    '''
-    custom_level_styles = {'debug': {'color': 'black'},
-                           'info': {'color': 'white'},
-                           'warning': {'color': 'yellow'},
-                           'error': {'color': 'red'},
-                           'critical': {'color': 'magenta'},
-                           }
-
-    coloredlogs.install(
-        logger=logger,
-        level=args.log_level.upper(),
-        level_styles=custom_level_styles,
-        fmt='%(levelname)-8s: %(message)s',
-        field_styles={
-            'asctime': {'color': 'black'},
-            'levelname': {'color': 'black', 'bold': True},
-        },
-    )
-    '''
     return logger
 
 

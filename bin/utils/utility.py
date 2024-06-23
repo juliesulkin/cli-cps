@@ -84,7 +84,7 @@ class Utility():
         content_json = json.dumps(content_str, indent=2)
         return content_json
 
-    def write_json(self, lg: lg, console, filepath: str, json_object: dict) -> None:
+    def write_json(self, filepath: str, json_object: dict) -> None:
         with open(filepath, 'w') as f:
             json.dump(dict(json_object), f, indent=4)
         filepath = Path(f'{filepath}').absolute()

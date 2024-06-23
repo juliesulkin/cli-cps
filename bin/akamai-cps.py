@@ -31,6 +31,7 @@ def build_class_objects(args, cps: cps.Enrollment):
 if __name__ == '__main__':
     args = Parser.get_args(args=None if sys.argv[1:] else ['--help'])
     logger = lg.setup_logger(args)
+    logger.info('')
     logger.info('Starting Akamai CPS CLI')
 
     (account_name, util,
