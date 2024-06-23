@@ -1,10 +1,8 @@
 # Techdocs reference
 # https://techdocs.akamai.com/cps/reference/api-summary
-
 # https://techdocs.akamai.com/cps/reference/rate-limiting
 # Maximum limit of 100 requests per every 2 minutes, per account.
 # Short-term rate limit of 20 requests per 2 seconds, per account.
-
 from __future__ import annotations
 
 import logging

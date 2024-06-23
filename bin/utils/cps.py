@@ -25,9 +25,9 @@ from tabulate import tabulate
 from utils import cli_logging as lg
 from utils import emojis
 from utils import util_async
+from utils.util_async import run_in_executor
 from utils.utility import Utility
 from xlsxwriter.workbook import Workbook
-from utils.util_async import run_in_executor
 
 console = Console(stderr=True)
 logger = logging.getLogger(__name__)
@@ -469,7 +469,7 @@ async def combined(args, account_enrollments, cps_change, cps_deploy) -> list:
         results = await asyncio.gather(*tasks)
 
     for result in results:
-        for xlsx, console_output  in result:
+        for xlsx, console_output in result:
             rows.extend(xlsx)
             console_rows.extend(console_output)
 

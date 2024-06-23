@@ -50,7 +50,7 @@ class CLIFormatter(logging.Formatter):
                 format_thread_name = pool_worker
             else:
                 format_thread_name = f'thread-{pool_worker}'
-        return f'{format_thread_name:<10}'
+        return format_thread_name
 
 
 def setup_logger(args):

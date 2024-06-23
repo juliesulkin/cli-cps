@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 
 from akamai_apis.cps import Enrollment
 from rich.console import Console
@@ -12,7 +13,6 @@ from rich.progress import Progress
 from rich.progress import TaskProgressColumn
 from rich.progress import TextColumn
 from utils.utility import Utility
-from functools import partial
 
 
 console = Console(stderr=True)
