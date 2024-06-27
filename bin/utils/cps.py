@@ -201,8 +201,7 @@ def update_enrollment(cps: Enrollment, util: Utility, args) -> None:
 
 
 def delete_enrollment(cps: Enrollment, args) -> None:
-    enrollment_id = args.enrollment_id
-    resp = cps.get_enrollment(enrollment_id)
+    enrollment_id, resp = cps.get_enrollment(args.enrollment_id)
     if not resp.ok:
         logger.error(f'Invalid API Response: {resp.status_code}. Unable to fetch Certificate details.')
         return -1
@@ -258,37 +257,44 @@ def delete_enrollment(cps: Enrollment, args) -> None:
                 logger.info(msg_wait)
 
 
-def cancel_enrollment(cps: Enrollment, args, logger) -> None:
-    enrollment_id = args.enrollment_id
-    resp = cps.get_enrollment(enrollment_id)
+def cancel_enrollment(cps: Enrollment, args) -> None:
+
+    enrollment_id, resp = cps.get_enrollment(args.enrollment_id)
 
     if not resp.ok:
         logger.error(f'Invalid API Response: {resp.status_code}. Unable to fetch Certificate details.')
-        return -1
     else:
         result = resp.json()
+
         pending = len(result.get('pendingChanges', []))
         cn = result.get('csr', {}).get('cn', None)
 
-        if pending > 0:
-            enrollment_details_json = resp.json()
-            change_id = int(enrollment_details_json['pendingChanges'][0]['location'].split('/')[-1])
-            change_status_response = cps.get_change_status(enrollment_id, change_id)
-            if change_status_response.status_code == 200:
-                pending_detail = change_status_response.json()['statusInfo']['description']
-                msg = f'There is an active change for this certificate. Details: {pending_detail}'
-                logger.critical(msg)
-                msg = f'Cancelling the request with change ID: {change_id} for CN: {cn}'
-                logger.critical(msg)
-                print()
-                logger.critical('Do you wish to continue? (Y/N)')
-                decision = input().upper()
-            else:
-                msg = 'Unable to fetch changes related to Certificate.'
-                logger.critical(msg)
+        if pending == 0:
+            logger.critical('There is NO active change for this certificate.')
         else:
-            msg = 'There is NO active change for this certificate.'
-            logger.critical(msg)
+            change_id = int(result['pendingChanges'][0]['location'].split('/')[-1])
+            logger.info(f'{change_id}')
+            change_status_response = cps.get_change_status(enrollment_id, change_id)
+            if not change_status_response.ok:
+                logger.critical('Unable to fetch changes related to Certificate.')
+            else:
+                print_json(data=change_status_response.json())
+                pending_detail = change_status_response.json()
+                if not ('pendingChanges' in pending_detail):
+                    logger.info(f'Unable to determine change status for enrollment ID: {enrollment_id}')
+                    return -1
+                else:
+
+                    pending_detail = pending_detail['statusInfo']['description']
+
+                    msg = f'There is an active change for this certificate. Details: {pending_detail}\n'
+                    logger.critical(msg)
+                    msg = f'Cancelling the request with change ID: {change_id} for CN: {cn}\n'
+                    logger.critical(msg)
+
+                    logger.critical('Do you wish to continue? (Y/N)')
+                    decision = input().upper()
+
     if decision != 'Y':
         logger.info('Exiting...')
     else:
