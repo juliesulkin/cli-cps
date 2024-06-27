@@ -58,7 +58,7 @@ class Enrollment(AkamaiSession):
         try:
             with self.session.get(url, headers=headers, params=self._params) as resp:
                 if not resp.ok:
-                    logger.error(f'{enrollment_id:<20} {resp.status_code} {resp.json()['detail']}')
+                    logger.debug(f'{enrollment_id:<20} {resp.status_code} {resp.json()}')
                     return enrollment_id, resp
                 else:
                     self._enrollment_id = enrollment_id
@@ -125,13 +125,16 @@ class Enrollment(AkamaiSession):
         resp = self.session.put(url, data=payload, headers=headers, params=self._params)
         return resp
 
-    def remove_enrollment(self, enrollment_id: int, deploy_not_after, deploy_not_before, allow_cancel_pending_changes):
+    def remove_enrollment(self, enrollment_id: int, deploy_not_after, deploy_not_before,
+                          allow_cancel_pending_changes: bool | None = False):
         """
         Removes an enrollment from CPS.
         """
         self._params['allow-cancel-pending-changes'] = allow_cancel_pending_changes
-        self._params['deploy_not_after'] = deploy_not_after
-        self._params['deploy_not_before'] = deploy_not_before
+        if deploy_not_after:
+            self._params['deploy_not_after'] = deploy_not_after
+        if deploy_not_before:
+            self._params['deploy_not_before'] = deploy_not_before
         headers = {'Accept': 'application/vnd.akamai.cps.enrollment-status.v1+json'}
         url = f'{self.MODULE}/enrollments/{enrollment_id}'
         resp = self.session.delete(url, headers=headers, params=self._params)

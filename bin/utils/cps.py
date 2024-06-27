@@ -203,7 +203,9 @@ def update_enrollment(cps: Enrollment, util: Utility, args) -> None:
 def delete_enrollment(cps: Enrollment, args) -> None:
     enrollment_id, resp = cps.get_enrollment(args.enrollment_id)
     if not resp.ok:
-        logger.error(f'Invalid API Response: {resp.status_code}. Unable to fetch Certificate details.')
+        msg = f'Invalid API Response: {resp.status_code} Unable to fetch Certificate details.'
+        print(msg)
+        logger.error(msg)
         return -1
     else:
         result = resp.json()
@@ -211,19 +213,17 @@ def delete_enrollment(cps: Enrollment, args) -> None:
         cn = result.get('csr', {}).get('cn', None)
 
         if pending > 0:
-            if not args.allow_cancel_pending_changes:
-                msg = 'There is an active change for this certificate. Please cancel the change before deleting this enrollment'
+            if not args.cancel_pending:
+                msg = 'There is an active change for this certificate.'
+                msg = f'{msg} Please cancel the change before deleting this enrollment'
+                print(msg)
                 logger.critical(msg)
                 return -1
             else:
-                msg = 'You have choose to cancels all pending changes when updating an enrollment'
-                logger.critical(msg)
-                print()
-                msg = 'You are about to delete the live certificate which may impact production traffic for cn:'
+                logger.critical('You have choose to cancels all pending changes when updating an enrollment\n')
+                msg = f'You are about to delete the live certificate which may impact production traffic for cn: {cn}'
                 msg = f'{msg} {cn} with enrollment-id: {enrollment_id}'
-                print()
-                logger.info('Do you wish to continue? (Y/N)')
-                decision = input().upper()
+                print(msg)
 
         if pending == 0:
             if args.force:
@@ -231,29 +231,39 @@ def delete_enrollment(cps: Enrollment, args) -> None:
             else:
                 msg = 'You are about to delete the live certificate which may impact production traffic for cn:'
                 msg = f'{msg} {cn} with enrollment-id: {enrollment_id}'
+                print(msg)
                 logger.critical(msg)
                 print()
-                logger.info('Do you wish to continue? (Y/N)')
+                print('Do you wish to continue? (Y/N)')
                 decision = input().upper()
 
     if decision != 'Y':
+        print('Exiting...')
+
         logger.info('Exiting...')
     else:
-        resp_delete = cps.remove_enrollment(enrollment_id, args.deploy_not_after, args.deploy_not_before, args.allow_cancel_pending_changes)
+        # place holder to validate args.deploy_not_after, args.deploy_not_before
+        deploy_not_after = ''
+        deploy_not_before = ''
+
+        resp_delete = cps.remove_enrollment(enrollment_id, deploy_not_after, deploy_not_before, args.cancel_pending)
         if not resp_delete.ok:
             print_json(data=resp_delete.json())
-            logger.info(resp_delete.url)
+            logger.debug(resp_delete.url)
             logger.error(f'Invalid API Response ({resp_delete.status_code}) Deletion unsuccessful')
         else:
             logger.info('Deletion successfully Initiated')
             if resp_delete.status_code == 200:
                 msg = f'Success: The enrollment with enrollment-id: {enrollment_id} was deleted immediately.'
+                print(msg)
                 logger.info(msg)
 
             if resp_delete.status_code == 202:
                 msg = f'Accepted: Deletion for enrollment-id: {enrollment_id} was accepted and being processed. This may take some time.'
+                print(msg)
                 logger.info(msg)
                 msg_wait = 'Please Wait. This may take some time.'
+                print(msg_wait)
                 logger.info(msg_wait)
 
 
@@ -284,11 +294,11 @@ def cancel_enrollment(cps: Enrollment, args) -> None:
                     logger.info(f'Unable to determine change status for enrollment ID: {enrollment_id}')
                     return -1
                 else:
-
                     pending_detail = pending_detail['statusInfo']['description']
 
                     msg = f'There is an active change for this certificate. Details: {pending_detail}\n'
                     logger.critical(msg)
+
                     msg = f'Cancelling the request with change ID: {change_id} for CN: {cn}\n'
                     logger.critical(msg)
 
@@ -299,13 +309,13 @@ def cancel_enrollment(cps: Enrollment, args) -> None:
         logger.info('Exiting...')
     else:
         resp_cancel = cps.cancel_change(enrollment_id, change_id)
-        if resp_cancel.status_code == 200:
+        if not resp_cancel.ok:
+            print_json(data=resp_cancel.json())
+            logger.debug(resp_cancel.url)
+            logger.error(f'Invalid API Response ({resp_cancel.status_code})  Deletion unsuccessful')
+        else:
             msg = f'Success: The change ID: {change_id} was deleted successfully.'
             logger.info(msg)
-        else:
-            print_json(data=resp_cancel.json())
-            logger.info(resp_cancel.url)
-            logger.error(f'Invalid API Response ({resp_cancel.status_code})  Deletion unsuccessful')
 
 
 def deploy_enrollment(cps: Enrollment,  cps_change: Changes, util: Utility, args) -> None:
