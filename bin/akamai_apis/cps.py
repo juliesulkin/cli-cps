@@ -116,10 +116,13 @@ class Enrollment(AkamaiSession):
         resp = self.session.put(url, data=payload, headers=headers, params=self._params)
         return resp
 
-    def remove_enrollment(self, enrollment_id: int):
+    def remove_enrollment(self, enrollment_id: int, deploy_not_after, deploy_not_before, allow_cancel_pending_changes):
         """
         Removes an enrollment from CPS.
         """
+        self._params['allow-cancel-pending-changes'] = allow_cancel_pending_changes
+        self._params['deploy_not_after'] = deploy_not_after
+        self._params['deploy_not_before'] = deploy_not_before
         headers = {'Accept': 'application/vnd.akamai.cps.enrollment-status.v1+json'}
         url = f'{self.MODULE}/enrollments/{enrollment_id}'
         resp = self.session.delete(url, headers=headers, params=self._params)
