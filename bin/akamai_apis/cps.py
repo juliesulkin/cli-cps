@@ -49,24 +49,24 @@ class Enrollment(AkamaiSession):
         """
         Gets an enrollment.
         """
-        headers = {'accept': 'application/vnd.akamai.cps.enrollment.v11+json'}
+        headers = {'accept': 'application/vnd.akamai.cps.enrollment.v12+json'}
         url = f'{self.MODULE}/enrollments/{enrollment_id}'
 
         if 'contractId' in self._params:
             del self._params['contractId']
+
         resp = None
         try:
             with self.session.get(url, headers=headers, params=self._params) as resp:
                 if not resp.ok:
                     logger.debug(f'{enrollment_id:<20} {resp.status_code} {resp.json()}')
-                    return enrollment_id, resp
                 else:
                     self._enrollment_id = enrollment_id
                     logger.info(f'{enrollment_id:<20} {resp}')
-                    return enrollment_id, resp
         except ChunkedEncodingError as err:
             logger.error(f'{enrollment_id:<10} {err}')
-            return enrollment_id, resp
+
+        return enrollment_id, resp
 
     def list_enrollment(self, contract_id: str | None = None):
         """
