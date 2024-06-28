@@ -241,8 +241,9 @@ def delete_enrollment(cps: Enrollment, util: Utility, args) -> None:
             else:
                 msg = 'You are about to delete the live certificate which may impact production traffic for cn:'
                 msg = f'{msg} {cn} with enrollment-id: {enrollment_id}'
-                print(msg)
                 logger.critical(msg)
+                lg.console_header(console, msg, emoji_name=emojis.attention, sandwiches=True, font_color='red')
+
                 print()
                 print('Do you wish to continue? (Y/N)')
                 decision = input().upper()
@@ -253,7 +254,7 @@ def delete_enrollment(cps: Enrollment, util: Utility, args) -> None:
     else:
         resp_delete = cps.remove_enrollment(enrollment_id, args.deploy_not_after, args.deploy_not_before, args.cancel_pending)
         if not resp_delete.ok:
-            print_json(data=resp_delete.json())
+            # print_json(data=resp_delete.json())
             logger.debug(resp_delete.url)
             logger.error(f'Invalid API Response ({resp_delete.status_code}) Deletion unsuccessful')
         else:
