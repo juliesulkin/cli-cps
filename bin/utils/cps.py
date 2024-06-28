@@ -268,54 +268,53 @@ def delete_enrollment(cps: Enrollment, args) -> None:
 
 
 def cancel_enrollment(cps: Enrollment, args) -> None:
-
     enrollment_id, resp = cps.get_enrollment(args.enrollment_id)
-
     if not resp.ok:
-        logger.error(f'Invalid API Response: {resp.status_code}. Unable to fetch Certificate details.')
+        msg = f'{resp.status_code} Unable to fetch Certificate details'
+        lg.console_header(console, msg, emoji_name=emojis.thumbdown)
+        logger.error(msg)
+        return -1
+
+    result = resp.json()
+    pending = len(result.get('pendingChanges', []))
+    cn = result.get('csr', {}).get('cn', None)
+
+    if pending == 0:
+        logger.critical('There is NO active change for this certificate.')
+        return -1
     else:
-        result = resp.json()
+        change_id = int(result['pendingChanges'][0]['location'].split('/')[-1])
+        logger.info(f'{change_id}')
+        change_status_response = cps.get_change_status(enrollment_id, change_id)
+        if not change_status_response.ok:
+            logger.critical('Unable to fetch changes related to Certificate.')
+            return -1
 
-        pending = len(result.get('pendingChanges', []))
-        cn = result.get('csr', {}).get('cn', None)
-
-        if pending == 0:
-            logger.critical('There is NO active change for this certificate.')
-        else:
-            change_id = int(result['pendingChanges'][0]['location'].split('/')[-1])
-            logger.info(f'{change_id}')
-            change_status_response = cps.get_change_status(enrollment_id, change_id)
-            if not change_status_response.ok:
-                logger.critical('Unable to fetch changes related to Certificate.')
-            else:
-                print_json(data=change_status_response.json())
-                pending_detail = change_status_response.json()
-                if not ('pendingChanges' in pending_detail):
-                    logger.info(f'Unable to determine change status for enrollment ID: {enrollment_id}')
-                    return -1
-                else:
-                    pending_detail = pending_detail['statusInfo']['description']
-
-                    msg = f'There is an active change for this certificate. Details: {pending_detail}\n'
-                    logger.critical(msg)
-
-                    msg = f'Cancelling the request with change ID: {change_id} for CN: {cn}\n'
-                    logger.critical(msg)
-
-                    logger.critical('Do you wish to continue? (Y/N)')
-                    decision = input().upper()
+    if args.force:
+        decision = 'Y'
+    else:
+        pending_detail = change_status_response.json()
+        # print_json(data=pending_detail)
+        pending_detail = pending_detail['statusInfo']['description']
+        msg = f'There is an active change for this certificate. Details: {pending_detail}\n'
+        lg.console_header(console, msg, emoji_name=emojis.stop)
+        msg = f'Cancelling the request with change ID: {change_id} for CN: {cn}\n'
+        lg.console_header(console, msg, emoji_name=emojis.stop)
+        lg.console_header(console, 'Do you wish to continue? (Y/N)', emoji_name=emojis.stop)
+        decision = input().upper()
 
     if decision != 'Y':
         logger.info('Exiting...')
     else:
         resp_cancel = cps.cancel_change(enrollment_id, change_id)
         if not resp_cancel.ok:
-            print_json(data=resp_cancel.json())
+            # print_json(data=resp_cancel.json())
             logger.debug(resp_cancel.url)
-            logger.error(f'Invalid API Response ({resp_cancel.status_code})  Deletion unsuccessful')
+            logger.error(f'Invalid API Response ({resp_cancel.status_code}) Cancelling unsuccessful')
         else:
-            msg = f'Success: The change ID: {change_id} was deleted successfully.'
+            msg = f'Success: The change ID: {change_id} was cancelled successfully.'
             logger.info(msg)
+            lg.console_header(console, msg, emoji_name=emojis.tada)
 
 
 def deploy_enrollment(cps: Enrollment,  cps_change: Changes, util: Utility, args) -> None:
