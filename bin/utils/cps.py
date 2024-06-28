@@ -200,15 +200,16 @@ def update_enrollment(cps: Enrollment, util: Utility, args) -> None:
             logger.info(msg)
 
 
-def delete_enrollment(cps: Enrollment, args) -> None:
+def delete_enrollment(cps: Enrollment, util: Utility, args) -> None:
     enrollment_id, resp = cps.get_enrollment(args.enrollment_id)
     if not resp.ok:
-        msg = f'Invalid API Response: {resp.status_code} Unable to fetch Certificate details.'
-        print(msg)
+        msg = f'{resp.status_code} Unable to fetch Certificate details'
+        lg.console_header(console, msg, emoji_name=emojis.thumbdown)
         logger.error(msg)
         return -1
     else:
         result = resp.json()
+        # print_json(data=result)
         pending = len(result.get('pendingChanges', []))
         cn = result.get('csr', {}).get('cn', None)
 
@@ -216,14 +217,23 @@ def delete_enrollment(cps: Enrollment, args) -> None:
             if not args.cancel_pending:
                 msg = 'There is an active change for this certificate.'
                 msg = f'{msg} Please cancel the change before deleting this enrollment'
-                print(msg)
+                lg.console_header(console, msg, emoji_name=emojis.stop)
                 logger.critical(msg)
+                msg = f'or run akamai cloudlets cancel --enrollment-id {enrollment_id}'
+                lg.console_header(console, msg, emoji_name=emojis.point_right)
+
                 return -1
             else:
-                logger.critical('You have choose to cancels all pending changes when updating an enrollment\n')
-                msg = f'You are about to delete the live certificate which may impact production traffic for cn: {cn}'
-                msg = f'{msg} {cn} with enrollment-id: {enrollment_id}'
-                print(msg)
+                msg = 'You have choose to cancels all pending changes when updating an enrollment      '
+                lg.console_header(console, msg, emoji_name=emojis.attention, sandwiches=True, font_color='red')
+
+                msg = 'You are about to delete the live certificate which may impact production traffic'
+                lg.console_header(console, msg, emoji_name=emojis.attention, sandwiches=True, font_color='red')
+
+                msg = f'cn: {cn} with enrollment-id: {enrollment_id}'
+                lg.console_header(console, msg, emoji_name=emojis.gem, sandwiches=True, font_color='blue')
+
+                decision = 'Y'
 
         if pending == 0:
             if args.force:
@@ -238,15 +248,10 @@ def delete_enrollment(cps: Enrollment, args) -> None:
                 decision = input().upper()
 
     if decision != 'Y':
-        print('Exiting...')
-
+        lg.console_header(console, 'Exiting...')
         logger.info('Exiting...')
     else:
-        # place holder to validate args.deploy_not_after, args.deploy_not_before
-        deploy_not_after = ''
-        deploy_not_before = ''
-
-        resp_delete = cps.remove_enrollment(enrollment_id, deploy_not_after, deploy_not_before, args.cancel_pending)
+        resp_delete = cps.remove_enrollment(enrollment_id, args.deploy_not_after, args.deploy_not_before, args.cancel_pending)
         if not resp_delete.ok:
             print_json(data=resp_delete.json())
             logger.debug(resp_delete.url)
@@ -254,17 +259,17 @@ def delete_enrollment(cps: Enrollment, args) -> None:
         else:
             logger.info('Deletion successfully Initiated')
             if resp_delete.status_code == 200:
-                msg = f'Success: The enrollment with enrollment-id: {enrollment_id} was deleted immediately.'
-                print(msg)
+                msg = f'The enrollment with enrollment-id: {enrollment_id} is deleted.'
                 logger.info(msg)
+                lg.console_header(console, msg, emoji_name=emojis.tada)
 
             if resp_delete.status_code == 202:
-                msg = f'Accepted: Deletion for enrollment-id: {enrollment_id} was accepted and being processed. This may take some time.'
-                print(msg)
+                msg = f'Deletion for enrollment-id: {enrollment_id} was accepted and being processed. This may take some time.'
                 logger.info(msg)
+                lg.console_header(console, msg, emoji_name=emojis.pending)
                 msg_wait = 'Please Wait. This may take some time.'
-                print(msg_wait)
                 logger.info(msg_wait)
+                lg.console_header(console, msg_wait, emoji_name=emojis.pending)
 
 
 def cancel_enrollment(cps: Enrollment, args) -> None:

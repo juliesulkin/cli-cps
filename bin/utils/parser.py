@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import inspect
 from pathlib import Path
 
@@ -31,6 +32,16 @@ class AkamaiParser(argparse.ArgumentParser):
     def __init__(self, prog):
         super().__init__(prog, max_help_position=30)
         self.usage = 'akamai cps [options] [command] [subcommand] [arguments] -h'
+
+    '''
+    def valid_date(self, date: str) -> datetime.datetime:
+        # TODO: investigate how this is called.
+        try:
+            x = datetime.datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            raise argparse.ArgumentError(f"{date} is not a valid date format (YYYY-MM-DD)")
+        return x
+    '''
 
     @classmethod
     def all_command(cls, subparsers):
@@ -164,6 +175,9 @@ class AkamaiParser(argparse.ArgumentParser):
             for arg in optional_arguments:
                 name = arg['name']
                 del arg['name']
+
+                if arg.get('type') == 'parser.valid_date':
+                    arg['type'] = datetime.date.fromisoformat
                 try:
                     action_value = arg['action']
                     del arg['action']
